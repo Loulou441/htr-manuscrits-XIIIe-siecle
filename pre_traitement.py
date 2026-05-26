@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import json
 import cv2
 import numpy as np
 import shutil
@@ -205,9 +206,11 @@ def estimer_angle_par_fft(image_binaire: np.ndarray) -> float:
 
 # Diagnostic d'inclinaison
 
-def diagnostiquer_inclinaison(image_gris: np.ndarray) -> DiagnosticResult:
+def diagnostiquer_inclinaison(
+    image_gris: np.ndarray,
+    methode: str = "projection",
+) -> DiagnosticResult:
     # Diagnostique l'inclinaison d'une image et recommande une action
-
     binaire = binariser_otsu(image_gris)
     # On utilise la méthode FFT par défaut (la plus robuste)
     angle = estimer_angle_par_fft(binaire)
@@ -265,24 +268,12 @@ def corriger_inclinaison(
 
 def deskewer(
     image: np.ndarray,
-    methode: str = "fft",
+    methode: str = "projection",
     forcer: bool = False,
 ) -> tuple[np.ndarray, DiagnosticResult]:
     # Pipeline deskewing complet : diagnostic → décision → correction.
     image_gris = vers_gris(image)
-    diag = diagnostiquer_inclinaison(image_gris)
-
-    # Recalculer avec la méthode choisie si différente de FFT
-    if methode != "fft":
-        binaire = binariser_otsu(image_gris)
-        if methode == "projection":
-            angle = estimer_angle_par_projection(binaire)
-        elif methode == "hough":
-            angle = estimer_angle_par_hough(binaire)
-        else:
-            raise ValueError(f"Méthode inconnue : {methode}. Choisir parmi projection/hough/fft")
-        diag.metric_value = angle
-        diag.params["angle"] = angle
+    diag = diagnostiquer_inclinaison(image_gris, methode=methode)
 
     if diag.decision == "skip" and not forcer:
         log.debug("Deskewing ignoré : angle=%.2f°", diag.metric_value)
@@ -545,11 +536,116 @@ def reduire_bruit_gaussien(
     diag.params["sigma_used"] = sigma
     return image_traitee, diag
 
-# 5. PIPELINE COMPLET
+# 5. SÉLECTION AUTOMATIQUE DE LA MÉTHODE PAR TYPE D'ÉCRITURE
+
+# Table de correspondance : mots-clés dans le nom du script → méthode optimale.
+#
+# Justification des choix :
+#   projection — Gothic Textualis (Formata, Libraria, Southern) :
+#       Les hastes et jambages verticaux très marqués créent dans le spectre FFT
+#       des fréquences verticales plus énergétiques que les lignes horizontales.
+#       La FFT se trompe d'orientation. Hough est perturbé par les réglures à la
+#       mine de plomb omniprésentes dans les manuscrits parisiens du XIIIe.
+#       La projection reste la méthode la plus stable sur ce type.
+#
+#   hough    — Semitextualis Currens, Textualis Currens :
+#       Écriture plus cursive, traits moins verticaux, lignes de base plus nettes.
+#       Hough détecte bien l'orientation dominante.
+#
+#   fft      — Non utilisé par défaut. Disponible manuellement si les scans
+#       sont très propres et l'écriture très régulière.
+
+SCRIPT_TO_METHODE: dict[str, str] = {
+    # Gothic Textualis et variantes → projection
+    "gothic textualis":          "projection",
+    "textualis formata":         "projection",
+    "textualis libraria":        "projection",
+    "southern textualis":        "projection",
+    "s. textualis":              "projection",
+    "caroline":                  "projection",
+    "praegothica":               "projection",
+    # Cursive et semi-cursive → hough
+    "semitextualis currens":     "hough",
+    "textualis currens":         "hough",
+    "cursiva":                   "hough",
+    "hybrida":                   "hough",
+    "bastarda":                  "hough",
+}
+
+METHODE_DEFAUT = "projection"
+
+def methode_pour_script(script: str) -> str:
+    # Retourne la méthode de deskewing optimale pour un type d'écriture donné.
+    # Insensible à la casse, tolère les variantes de nommage.
+    script_lower = script.lower().strip()
+    for motcle, methode in SCRIPT_TO_METHODE.items():
+        if motcle in script_lower:
+            return methode
+    log.warning(
+        "Script non reconnu : '%s' — méthode par défaut utilisée ('%s')",
+        script, METHODE_DEFAUT,
+    )
+    return METHODE_DEFAUT
+
+
+def charger_manifest(dataset_dir: Path) -> dict[str, str]:
+    # Lit manifest.json produit par dataset.py et construit un dict slug_dossier → méthode_deskew optimale.
+    manifest_path = dataset_dir / "manifest.json"
+    if not manifest_path.exists():
+        log.warning(
+            "manifest.json introuvable dans %s — méthode uniforme '%s' utilisée.",
+            dataset_dir, METHODE_DEFAUT,
+        )
+        return {}
+
+    with open(manifest_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    mapping: dict[str, str] = {}
+    for mss in data.get("manuscripts", []):
+        shelfmark = mss.get("shelfmark", "")
+        script    = mss.get("script", "")
+        slug      = shelfmark.replace(" ", "_").replace("/", "-").replace(".", "")
+        methode   = methode_pour_script(script)
+        mapping[slug] = methode
+        log.debug("  %-35s script=%-35s → %s", slug, script, methode)
+
+    log.info(
+        "Manifest chargé : %d manuscrits — méthodes : %s",
+        len(mapping),
+        {m: sum(1 for v in mapping.values() if v == m) for m in set(mapping.values())},
+    )
+    return mapping
+
+
+def methode_pour_image(
+    image_path: Path,
+    dataset_dir: Path,
+    manifest_mapping: dict[str, str],
+) -> str:
+    #Détermine la méthode de deskewing pour une image en remontant l'arborescence pour trouver le slug du manuscrit (2e niveau sous dataset_dir).
+    if not manifest_mapping:
+        return METHODE_DEFAUT
+    try:
+        parties = image_path.relative_to(dataset_dir).parts
+        if len(parties) >= 2:
+            slug = parties[1]
+            if slug in manifest_mapping:
+                return manifest_mapping[slug]
+            # Correspondance insensible à la casse
+            for key, methode in manifest_mapping.items():
+                if key.lower() == slug.lower():
+                    return methode
+    except ValueError:
+        pass
+    log.debug("Slug non trouvé pour %s — méthode par défaut", image_path.name)
+    return METHODE_DEFAUT
+
+# 6. PIPELINE COMPLET
 
 def pretraiter_image(
     image: np.ndarray,
-    methode_deskew: str = "fft",
+    methode_deskew: str = "projection",
     forcer_deskew: bool = False,
     forcer_clahe: bool = False,
     forcer_median: bool = False,
@@ -615,6 +711,7 @@ def pretraiter_dossier(
     input_dir: str | Path,
     output_dir: str | Path,
     extensions: set[str] = IMAGE_EXTENSIONS,
+    auto_methode: bool = True,
     **kwargs,
 ) -> list[PreprocessingReport]:
     # Applique le pipeline à toutes les images d'un dossier (récursif).
@@ -623,21 +720,41 @@ def pretraiter_dossier(
     output_dir = Path(output_dir)
     rapports = []
 
+    # Charger le manifest pour la sélection automatique de méthode
+    manifest_mapping: dict[str, str] = {}
+    if auto_methode:
+        manifest_mapping = charger_manifest(input_dir)
+
     fichiers = [
         f for f in input_dir.rglob("*")
         if f.is_file() and f.suffix.lower() in extensions
     ]
 
     log.info("Prétraitement de %d images dans %s ...", len(fichiers), input_dir)
+    if auto_methode and manifest_mapping:
+        log.info("Sélection automatique de méthode activée (lecture du manifest).")
+    elif auto_methode:
+        log.info("Manifest absent — méthode uniforme '%s' appliquée.", METHODE_DEFAUT)
 
     for i, fichier in enumerate(sorted(fichiers), 1):
         relatif = fichier.relative_to(input_dir)
         dest = output_dir / relatif
         dest.parent.mkdir(parents=True, exist_ok=True)
 
-        log.info("[%d/%d] %s", i, len(fichiers), relatif)
+        # Sélection de la méthode pour cette image
+        if auto_methode:
+            methode = methode_pour_image(fichier, input_dir, manifest_mapping)
+            kw = {**kwargs, "methode_deskew": methode}
+        else:
+            kw = kwargs
+
+        log.info(
+            "[%d/%d] %s  [deskew=%s]",
+            i, len(fichiers), relatif,
+            kw.get("methode_deskew", METHODE_DEFAUT),
+        )
         try:
-            rapport = pretraiter_fichier(fichier, dest, **kwargs)
+            rapport = pretraiter_fichier(fichier, dest, **kw)
             rapports.append(rapport)
         except Exception as e:
             log.error("Erreur sur %s : %s", fichier, e)
@@ -690,9 +807,17 @@ def main() -> None:
     )
     parser.add_argument(
         "--methode-deskew",
-        choices=["fft", "projection", "hough"],
-        default="fft",
-        help="Méthode de détection d'inclinaison (défaut : fft)",
+        choices=["projection", "fft", "hough"],
+        default="projection",
+        help="Méthode de deskewing utilisée si --no-auto-methode (défaut : projection)",
+    )
+    parser.add_argument(
+        "--no-auto-methode",
+        action="store_true",
+        help=(
+            "Désactive la sélection automatique par script paléographique. "
+            "Applique --methode-deskew uniformément à toutes les images."
+        ),
     )
     parser.add_argument(
         "--diagnose-only",
@@ -738,7 +863,11 @@ def main() -> None:
     }
 
     if input_path.is_dir():
-        rapports = pretraiter_dossier(input_path, output_path, **kwargs)
+        rapports = pretraiter_dossier(
+            input_path, output_path,
+            auto_methode=not args.no_auto_methode,
+            **kwargs,
+        )
         for r in rapports:
             if args.diagnose_only or args.verbose:
                 afficher_rapport(r)
