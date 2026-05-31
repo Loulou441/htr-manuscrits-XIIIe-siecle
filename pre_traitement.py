@@ -211,9 +211,29 @@ def diagnostiquer_inclinaison(
     methode: str = "projection",
 ) -> DiagnosticResult:
     # Diagnostique l'inclinaison d'une image et recommande une action
-    binaire = binariser_otsu(image_gris)
-    # On utilise la méthode FFT par défaut (la plus robuste)
-    angle = estimer_angle_par_fft(binaire)
+    
+    ## Analyse recentrée sur le bloc de texte (Crop des 60% centraux)
+    h, w = image_gris.shape
+    zone_centrale = image_gris[int(h * 0.15):int(h * 0.85), int(w * 0.15):int(w * 0.85)]
+    
+    ## Passage à un seuillage adaptatif local au lieu d'Otsu global
+    binaire_local = cv2.adaptiveThreshold(
+        zone_centrale, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 25, 10
+    )
+    
+    ## Respect de la méthode demandée en paramètre
+    if methode == "projection":
+        angle = estimer_angle_par_projection(binaire_local)
+    elif methode == "hough":
+        angle = estimer_angle_par_hough(binaire_local)
+    elif methode == "fft":
+        angle = estimer_angle_par_fft(binaire_local)
+    else:
+        log.warning("Méthode de deskewing inconnue : '%s'. Repli sur 'projection'.", methode)
+        angle = estimer_angle_par_projection(binaire_local)
+        
     abs_angle = abs(angle)
 
     if abs_angle < 0.3:
@@ -296,7 +316,7 @@ def corriger_perspective(
     largeur_cible: Optional[int] = None,
     hauteur_cible: Optional[int] = None,
 ) -> np.ndarray:
-    # Corrige la distorsion de perspective par homographie (§2.3).
+    # Corrige la distorsion de perspective par homographie.
 
     # Calculer la taille cible si non fournie
     if largeur_cible is None or hauteur_cible is None:
