@@ -1,0 +1,5 @@
+numpy>=1.23
+opencv-python>=4.5
+kraken>=4.3
+lxml>=4.9            # lecture des fichiers ALTO XML
+tqdm>=4.64           # barres de progression
