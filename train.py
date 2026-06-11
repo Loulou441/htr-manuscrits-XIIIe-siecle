@@ -277,7 +277,7 @@ def construire_split(
     manuscrits: list[dict],
     train_ratio: float = SPLIT_TRAIN,
     dev_ratio:   float = SPLIT_DEV,
-    seed:        int   = 42,
+    seed:        int   = 67,
 ) -> dict[str, list[dict]]:
     """
     Construit le split train/dev/test en assignant des manuscrits entiers
@@ -435,7 +435,6 @@ def afficher_split(stats: dict[str, SplitStats]) -> None:
 
 def sauvegarder_split(split, splits_dir):  # alias conservé pour compatibilité
     return sauvegarder_split_verrouille(split, splits_dir)
-
 
 
 SPLIT_LOCK_FILENAME = "split_lock.json"
