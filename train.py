@@ -68,7 +68,7 @@ DEFAULT_REPORTS = Path("./reports")
 DEFAULT_LEARNING_RATE  = 1e-4       # lr bas pour fine-tuning (préserve les poids)
 DEFAULT_LAG            = 20         # early stopping : patience en epochs
 DEFAULT_MIN_EPOCHS     = 5          # ne pas arrêter avant ce nombre d'epochs
-DEFAULT_MAX_EPOCHS     = 100        # plafond de sécurité
+DEFAULT_MAX_EPOCHS     = 50        # plafond de sécurité
 DEFAULT_BATCH_SIZE     = 16
 DEFAULT_DEVICE         = "cpu"      # "cpu" | "cuda" | "mps"
 
