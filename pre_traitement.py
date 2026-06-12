@@ -72,6 +72,8 @@ class PreprocessingReport:
     median_ksize: int
     gaussian_filter_applied: bool
     gaussian_sigma: float
+    sauvola_applied: bool
+    sauvola_block_size: int
     processing_time_s: float
 
 # 1. UTILITAIRES — CHARGEMENT ET CONVERSION
