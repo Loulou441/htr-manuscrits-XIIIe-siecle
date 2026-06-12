@@ -558,6 +558,74 @@ def reduire_bruit_gaussien(
     diag.params["sigma_used"] = sigma
     return image_traitee, diag
 
+## Binarisation adaptative Sauvola — contraste local irrégulier
+
+def diagnostiquer_sauvola(image_gris: np.ndarray) -> DiagnosticResult:
+    # Diagnostique si une binarisation adaptative Sauvola est utile.
+    # Métrique : variance du Laplacien (mesure la netteté du contraste local).
+    laplacian = cv2.Laplacian(image_gris, cv2.CV_64F)
+    variance = float(np.var(laplacian))
+
+    if variance < 100.0:
+        decision = "skip"
+        params = {}
+        note = f"Contraste local uniforme (var={variance:.1f}) — Sauvola inutile"
+    elif variance < 300.0:
+        decision = "apply"
+        params = {"blockSize": 31, "C": 2}
+        note = f"Contraste local modéré (var={variance:.1f}) — Sauvola recommandé (blockSize=31)"
+    else:
+        decision = "apply_strong"
+        params = {"blockSize": 51, "C": 5}
+        note = f"Contraste très variable (var={variance:.1f}) — Sauvola fort (blockSize=51)"
+
+    return DiagnosticResult(
+        metric_name="variance_laplacien",
+        metric_value=variance,
+        decision=decision,
+        params=params,
+        note=note,
+    )
+
+
+def filtrer_sauvola(
+    image: np.ndarray,
+    block_size: int = 31,
+    C: int = 2,
+) -> np.ndarray:
+    # Applique la binarisation adaptative Sauvola (ADAPTIVE_THRESH_GAUSSIAN_C).
+    if block_size % 2 == 0:
+        block_size += 1
+    image_gris = vers_gris(image)
+    return cv2.adaptiveThreshold(
+        image_gris, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        block_size,
+        C,
+    )
+
+
+def binariser_sauvola(
+    image: np.ndarray,
+    forcer: bool = False,
+) -> tuple[np.ndarray, DiagnosticResult]:
+    # Pipeline Sauvola complet : diagnostic → décision → application.
+    image_gris = vers_gris(image)
+    diag = diagnostiquer_sauvola(image_gris)
+
+    if diag.decision == "skip" and not forcer:
+        log.debug("Sauvola ignoré : %s", diag.note)
+        return image, diag
+
+    block_size = diag.params.get("blockSize", 31)
+    C = diag.params.get("C", 2)
+    log.debug("Sauvola appliqué : blockSize=%d, C=%d", block_size, C)
+    image_traitee = filtrer_sauvola(image, block_size=block_size, C=C)
+    diag.params["block_size_used"] = block_size
+    return image_traitee, diag
+
+
 # 5. SÉLECTION AUTOMATIQUE DE LA MÉTHODE PAR TYPE D'ÉCRITURE
 
 # Table de correspondance : mots-clés dans le nom du script → méthode optimale.
