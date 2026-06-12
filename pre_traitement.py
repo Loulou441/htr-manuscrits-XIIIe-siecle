@@ -740,6 +740,7 @@ def pretraiter_image(
     forcer_clahe: bool = False,
     forcer_median: bool = False,
     forcer_gaussien: bool = False,
+    forcer_sauvola: bool = False,
 ) -> tuple[np.ndarray, PreprocessingReport]:
     # Pipeline de prétraitement complet pour un scan de manuscrit médiéval.
 
@@ -765,6 +766,11 @@ def pretraiter_image(
     gauss_applied = diag_gauss.decision in ("apply", "apply_strong") or forcer_gaussien
     gauss_sigma = diag_gauss.params.get("sigma_used", diag_gauss.params.get("sigma", 0.0))
 
+    # Étape 4 : Binarisation adaptative Sauvola
+    img, diag_sauvola = binariser_sauvola(img, forcer=forcer_sauvola)
+    sauvola_applied = diag_sauvola.decision in ("apply", "apply_strong") or forcer_sauvola
+    sauvola_block_size = diag_sauvola.params.get("block_size_used", diag_sauvola.params.get("blockSize", 0))
+
     elapsed = time.perf_counter() - t0
 
     rapport = PreprocessingReport(
@@ -777,6 +783,8 @@ def pretraiter_image(
         median_ksize=median_ksize,
         gaussian_filter_applied=gauss_applied,
         gaussian_sigma=gauss_sigma,
+        sauvola_applied=sauvola_applied,
+        sauvola_block_size=sauvola_block_size,
         processing_time_s=elapsed,
     )
 
