@@ -335,7 +335,7 @@ def collecter_manuscrits(input_dir: Path) -> list[dict]:
         for slug_dir in sorted(lang_dir.iterdir()):
             if not slug_dir.is_dir():
                 continue
-            xml_files = sorted(slug_dir.glob("*.xml"))
+            xml_files = sorted(slug_dir.glob("*.chocomufin.xml"))
             if not xml_files:
                 continue
             manuscrits.append({
@@ -1517,6 +1517,26 @@ def main() -> None:
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Détection environnement SageMaker : surcharge les chemins si on tourne
+    # dans un container SageMaker (variables SM_CHANNEL_* injectées automatiquement)
+    sm_train = os.environ.get("SM_CHANNEL_TRAIN")
+    sm_model_dir = os.environ.get("SM_MODEL_DIR")
+    sm_splits = os.environ.get("SM_CHANNEL_SPLITS")
+    sm_basemodel = os.environ.get("SM_CHANNEL_BASEMODEL")
+
+    if sm_train:
+        log.info("Environnement SageMaker détecté — chemins /opt/ml/ utilisés")
+        args.input = Path(sm_train)
+    if sm_model_dir:
+        args.models_dir = Path(sm_model_dir)
+    if sm_splits:
+        args.splits_dir = Path(sm_splits)
+    if sm_basemodel:
+        candidates = list(Path(sm_basemodel).glob("*.mlmodel"))
+        if candidates:
+            args.model_base = candidates[0]
+            log.info("Modèle de base SageMaker : %s", args.model_base)
 
     device = resolve_device(args.device)
     if args.device == "auto":
