@@ -219,3 +219,28 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+cremma
+.jpeg
+.jpg
+
+# Venv Kraken local
+cremma/
+
+# Clés SSH / credentials — NE JAMAIS COMMITTER
+*.pem
+*.key
+credentials.json
+
+# Données lourdes
+data/
+models/
+reports/
+
+# Formats ML lourds
+*.arrow
+*.ckpt
+*.safetensors
+*.mlmodel
+
+# AWS SageMaker artifacts
+htr-cremma-training-*/

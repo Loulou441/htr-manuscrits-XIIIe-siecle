@@ -69,7 +69,7 @@ MANUSCRIPTS: list[Manuscript] = [
         lines_total=6324,
         corpus="CREMMA-Medieval",
         repo_url=CREMMA_REPO,
-        subdir="data/fr_412",
+        subdir="data/bnf_fr_412-wauchier",
     ),
     Manuscript(
         shelfmark="Arsenal 3516",
@@ -78,7 +78,7 @@ MANUSCRIPTS: list[Manuscript] = [
         lines_total=1991,
         corpus="CREMMA-Medieval",
         repo_url=CREMMA_REPO,
-        subdir="data/Arsenal_3516",
+        subdir="data/bnf_arsenal_3516-imageDuMonde",
     ),
     Manuscript(
         shelfmark="Cologny, Bodmer 168",
@@ -87,7 +87,7 @@ MANUSCRIPTS: list[Manuscript] = [
         lines_total=1976,
         corpus="CREMMA-Medieval",
         repo_url=CREMMA_REPO,
-        subdir="data/Bodmer_168",
+        subdir="data/bodmer_168-otinel",
     ),
     Manuscript(
         shelfmark="BnF fr. 24428",
@@ -96,16 +96,7 @@ MANUSCRIPTS: list[Manuscript] = [
         lines_total=1328,
         corpus="CREMMA-Medieval",
         repo_url=CREMMA_REPO,
-        subdir="data/fr_24428",
-    ),
-    Manuscript(
-        shelfmark="BnF fr. 25516",
-        lang="fro", century="XIII",
-        script="Gothic Textualis",
-        lines_total=717,
-        corpus="CREMMA-Medieval",
-        repo_url=CREMMA_REPO,
-        subdir="data/fr_25516",
+        subdir="data/bnf_fr_24428-bestiaire",
     ),
     Manuscript(
         shelfmark="BnF fr. 844",
@@ -114,7 +105,7 @@ MANUSCRIPTS: list[Manuscript] = [
         lines_total=224,
         corpus="CREMMA-Medieval",
         repo_url=CREMMA_REPO,
-        subdir="data/fr_844",
+        subdir="data/bnf_fr_844-manuscritDuRoi",
     ),
     Manuscript(
         shelfmark="BnF fr. 17229",
@@ -123,7 +114,7 @@ MANUSCRIPTS: list[Manuscript] = [
         lines_total=164,
         corpus="CREMMA-Medieval",
         repo_url=CREMMA_REPO,
-        subdir="data/fr_17229",
+        subdir="data/bnf_fr_17229-saintLambert",
     ),
     Manuscript(
         shelfmark="BnF fr. 13496",
@@ -132,7 +123,7 @@ MANUSCRIPTS: list[Manuscript] = [
         lines_total=161,
         corpus="CREMMA-Medieval",
         repo_url=CREMMA_REPO,
-        subdir="data/fr_13496",
+        subdir="data/bnf_fr_13496-saintJerome",
     ),
 
     # CREMMA-Medieval-LAT

@@ -50,6 +50,7 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
 # 0. STRUCTURES DE DONNÉES
 
+
 @dataclass
 class DiagnosticResult:
     # Résultat d'un diagnostic avec décision et paramètres recommandés
@@ -72,9 +73,12 @@ class PreprocessingReport:
     median_ksize: int
     gaussian_filter_applied: bool
     gaussian_sigma: float
+    sauvola_applied: bool
+    sauvola_block_size: int
     processing_time_s: float
 
 # 1. UTILITAIRES — CHARGEMENT ET CONVERSION
+
 
 def charger_image(path: str | Path) -> np.ndarray:
     """
@@ -102,12 +106,13 @@ def vers_gris(image: np.ndarray) -> np.ndarray:
 
 
 def binariser_otsu(image_gris: np.ndarray) -> np.ndarray:
-    #Binarise une image en niveaux de gris par la méthode d'Otsu (1979).
+    # Binarise une image en niveaux de gris par la méthode d'Otsu (1979).
     _, binaire = cv2.threshold(
         image_gris, 0, 255,
         cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
     return binaire
+
 
 def sauvegarder_image(image: np.ndarray, path: str | Path) -> None:
     """Sauvegarde une image NumPy vers un fichier."""
@@ -117,7 +122,8 @@ def sauvegarder_image(image: np.ndarray, path: str | Path) -> None:
 
 # 2. CORRECTION GÉOMÉTRIQUE — DESKEWING
 
-## Deskewing par analyse de profils de projection
+# Deskewing par analyse de profils de projection
+
 
 def estimer_angle_par_projection(
     image_binaire: np.ndarray,
@@ -150,7 +156,7 @@ def estimer_angle_par_projection(
     return meilleur_angle
 
 
-## Deskewing par transformée de Hough
+# Deskewing par transformée de Hough
 
 def estimer_angle_par_hough(image_binaire: np.ndarray) -> float:
     # Estime l'angle d'inclinaison dominant par transformée de Hough
@@ -180,7 +186,7 @@ def estimer_angle_par_hough(image_binaire: np.ndarray) -> float:
     return float(np.median(thetas))
 
 
-## Deskewing par analyse fréquentielle (FFT)
+# Deskewing par analyse fréquentielle (FFT)
 
 def estimer_angle_par_fft(image_binaire: np.ndarray) -> float:
     # Estime l'angle d'inclinaison via la Transformée de Fourier rapide.
@@ -198,7 +204,7 @@ def estimer_angle_par_fft(image_binaire: np.ndarray) -> float:
     if lignes is None or len(lignes) == 0:
         return 0.0
 
-    thetas = [np.degrees(l[0][1]) for l in lignes]
+    thetas = [np.degrees(ligne[0][1]) for ligne in lignes]
     # L'orientation dans le spectre est perpendiculaire → rotation de 90°
     angle_spectre = float(np.median(thetas))
     return angle_spectre - 90.0
@@ -211,19 +217,19 @@ def diagnostiquer_inclinaison(
     methode: str = "projection",
 ) -> DiagnosticResult:
     # Diagnostique l'inclinaison d'une image et recommande une action
-    
-    ## Analyse recentrée sur le bloc de texte (Crop des 60% centraux)
+
+    # Analyse recentrée sur le bloc de texte (Crop des 60% centraux)
     h, w = image_gris.shape
     zone_centrale = image_gris[int(h * 0.15):int(h * 0.85), int(w * 0.15):int(w * 0.85)]
-    
-    ## Passage à un seuillage adaptatif local au lieu d'Otsu global
+
+    # Passage à un seuillage adaptatif local au lieu d'Otsu global
     binaire_local = cv2.adaptiveThreshold(
         zone_centrale, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY, 25, 10
     )
-    
-    ## Respect de la méthode demandée en paramètre
+
+    # Respect de la méthode demandée en paramètre
     if methode == "projection":
         angle = estimer_angle_par_projection(binaire_local)
     elif methode == "hough":
@@ -233,7 +239,7 @@ def diagnostiquer_inclinaison(
     else:
         log.warning("Méthode de deskewing inconnue : '%s'. Repli sur 'projection'.", methode)
         angle = estimer_angle_par_projection(binaire_local)
-        
+
     abs_angle = abs(angle)
 
     if abs_angle < 0.3:
@@ -350,6 +356,7 @@ def corriger_perspective(
 
 # 3. AMÉLIORATION DU CONTRASTE — CLAHE
 
+
 def diagnostiquer_contraste(image_gris: np.ndarray) -> DiagnosticResult:
     # Diagnostique l'uniformité du contraste et décide d'appliquer CLAHE.
     p75 = np.percentile(image_gris, 75)
@@ -425,10 +432,11 @@ def ameliorer_contraste(
 
 # 4. RÉDUCTION DU BRUIT
 
-## Filtre médian — bruit sel-et-poivre
+# Filtre médian — bruit sel-et-poivre
+
 
 def diagnostiquer_bruit_sel_poivre(image_gris: np.ndarray) -> DiagnosticResult:
-    # Diagnostique le bruit sel-et-poivre    
+    # Diagnostique le bruit sel-et-poivre
     total = image_gris.size
     extremes = int(np.sum((image_gris < 2) | (image_gris > 253)))
     fraction_pct = extremes / total * 100.0
@@ -490,7 +498,7 @@ def reduire_bruit_sel_poivre(
     return image_traitee, diag
 
 
-## Filtre gaussien — bruit de fond
+# Filtre gaussien — bruit de fond
 
 def diagnostiquer_bruit_gaussien(image_gris: np.ndarray) -> DiagnosticResult:
     # Diagnostique le bruit gaussien (bruit de fond) (§4.2.B).
@@ -556,6 +564,75 @@ def reduire_bruit_gaussien(
     diag.params["sigma_used"] = sigma
     return image_traitee, diag
 
+# Binarisation adaptative Sauvola — contraste local irrégulier
+
+
+def diagnostiquer_sauvola(image_gris: np.ndarray) -> DiagnosticResult:
+    # Diagnostique si une binarisation adaptative Sauvola est utile.
+    # Métrique : variance du Laplacien (mesure la netteté du contraste local).
+    laplacian = cv2.Laplacian(image_gris, cv2.CV_64F)
+    variance = float(np.var(laplacian))
+
+    if variance < 100.0:
+        decision = "skip"
+        params = {}
+        note = f"Contraste local uniforme (var={variance:.1f}) — Sauvola inutile"
+    elif variance < 300.0:
+        decision = "apply"
+        params = {"blockSize": 31, "C": 2}
+        note = f"Contraste local modéré (var={variance:.1f}) — Sauvola recommandé (blockSize=31)"
+    else:
+        decision = "apply_strong"
+        params = {"blockSize": 51, "C": 5}
+        note = f"Contraste très variable (var={variance:.1f}) — Sauvola fort (blockSize=51)"
+
+    return DiagnosticResult(
+        metric_name="variance_laplacien",
+        metric_value=variance,
+        decision=decision,
+        params=params,
+        note=note,
+    )
+
+
+def filtrer_sauvola(
+    image: np.ndarray,
+    block_size: int = 31,
+    C: int = 2,
+) -> np.ndarray:
+    # Applique la binarisation adaptative Sauvola (ADAPTIVE_THRESH_GAUSSIAN_C).
+    if block_size % 2 == 0:
+        block_size += 1
+    image_gris = vers_gris(image)
+    return cv2.adaptiveThreshold(
+        image_gris, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        block_size,
+        C,
+    )
+
+
+def binariser_sauvola(
+    image: np.ndarray,
+    forcer: bool = False,
+) -> tuple[np.ndarray, DiagnosticResult]:
+    # Pipeline Sauvola complet : diagnostic → décision → application.
+    image_gris = vers_gris(image)
+    diag = diagnostiquer_sauvola(image_gris)
+
+    if diag.decision == "skip" and not forcer:
+        log.debug("Sauvola ignoré : %s", diag.note)
+        return image, diag
+
+    block_size = diag.params.get("blockSize", 31)
+    C = diag.params.get("C", 2)
+    log.debug("Sauvola appliqué : blockSize=%d, C=%d", block_size, C)
+    image_traitee = filtrer_sauvola(image, block_size=block_size, C=C)
+    diag.params["block_size_used"] = block_size
+    return image_traitee, diag
+
+
 # 5. SÉLECTION AUTOMATIQUE DE LA MÉTHODE PAR TYPE D'ÉCRITURE
 
 # Table de correspondance : mots-clés dans le nom du script → méthode optimale.
@@ -577,22 +654,23 @@ def reduire_bruit_gaussien(
 
 SCRIPT_TO_METHODE: dict[str, str] = {
     # Gothic Textualis et variantes → projection
-    "gothic textualis":          "projection",
-    "textualis formata":         "projection",
-    "textualis libraria":        "projection",
-    "southern textualis":        "projection",
-    "s. textualis":              "projection",
-    "caroline":                  "projection",
-    "praegothica":               "projection",
+    "gothic textualis": "projection",
+    "textualis formata": "projection",
+    "textualis libraria": "projection",
+    "southern textualis": "projection",
+    "s. textualis": "projection",
+    "caroline": "projection",
+    "praegothica": "projection",
     # Cursive et semi-cursive → hough
-    "semitextualis currens":     "hough",
-    "textualis currens":         "hough",
-    "cursiva":                   "hough",
-    "hybrida":                   "hough",
-    "bastarda":                  "hough",
+    "semitextualis currens": "hough",
+    "textualis currens": "hough",
+    "cursiva": "hough",
+    "hybrida": "hough",
+    "bastarda": "hough",
 }
 
 METHODE_DEFAUT = "projection"
+
 
 def methode_pour_script(script: str) -> str:
     # Retourne la méthode de deskewing optimale pour un type d'écriture donné.
@@ -609,7 +687,8 @@ def methode_pour_script(script: str) -> str:
 
 
 def charger_manifest(dataset_dir: Path) -> dict[str, str]:
-    # Lit manifest.json produit par dataset.py et construit un dict slug_dossier → méthode_deskew optimale.
+    # Lit manifest.json produit par dataset.py et construit un dict
+    # slug_dossier → méthode_deskew optimale.
     manifest_path = dataset_dir / "manifest.json"
     if not manifest_path.exists():
         log.warning(
@@ -624,9 +703,9 @@ def charger_manifest(dataset_dir: Path) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for mss in data.get("manuscripts", []):
         shelfmark = mss.get("shelfmark", "")
-        script    = mss.get("script", "")
-        slug      = shelfmark.replace(" ", "_").replace("/", "-").replace(".", "")
-        methode   = methode_pour_script(script)
+        script = mss.get("script", "")
+        slug = shelfmark.replace(" ", "_").replace("/", "-").replace(".", "")
+        methode = methode_pour_script(script)
         mapping[slug] = methode
         log.debug("  %-35s script=%-35s → %s", slug, script, methode)
 
@@ -643,7 +722,9 @@ def methode_pour_image(
     dataset_dir: Path,
     manifest_mapping: dict[str, str],
 ) -> str:
-    #Détermine la méthode de deskewing pour une image en remontant l'arborescence pour trouver le slug du manuscrit (2e niveau sous dataset_dir).
+    # Détermine la méthode de deskewing pour une image en remontant
+    # l'arborescence pour trouver le slug du manuscrit (2e niveau sous
+    # dataset_dir).
     if not manifest_mapping:
         return METHODE_DEFAUT
     try:
@@ -663,6 +744,7 @@ def methode_pour_image(
 
 # 6. PIPELINE COMPLET
 
+
 def pretraiter_image(
     image: np.ndarray,
     methode_deskew: str = "projection",
@@ -670,6 +752,8 @@ def pretraiter_image(
     forcer_clahe: bool = False,
     forcer_median: bool = False,
     forcer_gaussien: bool = False,
+    forcer_sauvola: bool = False,
+    binariser: bool = False,
 ) -> tuple[np.ndarray, PreprocessingReport]:
     # Pipeline de prétraitement complet pour un scan de manuscrit médiéval.
 
@@ -695,6 +779,23 @@ def pretraiter_image(
     gauss_applied = diag_gauss.decision in ("apply", "apply_strong") or forcer_gaussien
     gauss_sigma = diag_gauss.params.get("sigma_used", diag_gauss.params.get("sigma", 0.0))
 
+    # Étape 4 : Sortie en niveaux de gris (mode L) ou binarisée (mode 1)
+    # binariser=False → mode L pour Kraken (évite le mismatch L/1)
+    # binariser=True  → Sauvola adaptatif (comportement historique)
+    if binariser:
+        img, diag_sauvola = binariser_sauvola(img, forcer=forcer_sauvola)
+        sauvola_applied = diag_sauvola.decision in ("apply", "apply_strong") or forcer_sauvola
+        sauvola_block_size = diag_sauvola.params.get(
+            "block_size_used", diag_sauvola.params.get("blockSize", 0))
+    else:
+        img = vers_gris(img)
+        sauvola_applied = False
+        sauvola_block_size = 0
+        diag_sauvola = DiagnosticResult(
+            metric_name="variance_laplacien", metric_value=0.0,
+            decision="skip", params={}, note="Sauvola désactivé — sortie mode L pour Kraken"
+        )
+
     elapsed = time.perf_counter() - t0
 
     rapport = PreprocessingReport(
@@ -707,6 +808,8 @@ def pretraiter_image(
         median_ksize=median_ksize,
         gaussian_filter_applied=gauss_applied,
         gaussian_sigma=gauss_sigma,
+        sauvola_applied=sauvola_applied,
+        sauvola_block_size=sauvola_block_size,
         processing_time_s=elapsed,
     )
 
@@ -808,6 +911,7 @@ def afficher_rapport(rapport: PreprocessingReport) -> None:
 
 # 6. INTERFACE EN LIGNE DE COMMANDE
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Pipeline de prétraitement des scans de manuscrits médiévaux."
@@ -823,7 +927,10 @@ def main() -> None:
         "--output", "-o",
         type=Path,
         default=None,
-        help="Image/dossier de sortie (défaut : ./data/preprocessed si input=dataset, sinon <input>_preprocessed)",
+        help=(
+            "Image/dossier de sortie "
+            "(défaut : ./data/preprocessed si input=dataset, sinon <input>_preprocessed)"
+        ),
     )
     parser.add_argument(
         "--methode-deskew",
@@ -837,6 +944,15 @@ def main() -> None:
         help=(
             "Désactive la sélection automatique par script paléographique. "
             "Applique --methode-deskew uniformément à toutes les images."
+        ),
+    )
+    parser.add_argument(
+        "--binariser",
+        action="store_true",
+        default=False,
+        help=(
+            "Appliquer la binarisation Sauvola en étape finale (sortie mode 1). "
+            "Par défaut : sortie en niveaux de gris (mode L) — recommandé pour Kraken."
         ),
     )
     parser.add_argument(
@@ -880,6 +996,8 @@ def main() -> None:
         "forcer_clahe": args.force_all,
         "forcer_median": args.force_all,
         "forcer_gaussien": args.force_all,
+        "forcer_sauvola": args.force_all,
+        "binariser": args.binariser,
     }
 
     if input_path.is_dir():

@@ -40,6 +40,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# ── Encodage console ──────────────────────────────────────────────────────────
+# Windows utilise cp1252 par défaut : forcer l'UTF-8 sur stdout/stderr évite les
+# UnicodeEncodeError (impression du rapport) et le mojibake dans les logs.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -54,7 +63,7 @@ log = logging.getLogger(__name__)
 # URL du modèle CREMMA Generic (latin + ancien français) sur Zenodo
 # DOI : 10.5281/zenodo.7234166
 CREMMA_GENERIC_URL = (
-    "https://zenodo.org/record/7234166/files/cremma_generic.mlmodel"
+    "https://zenodo.org/records/7234166/files/cremma-medieval_best.mlmodel?download=1"
 )
 CREMMA_GENERIC_FILENAME = "cremma_generic.mlmodel"
 
@@ -70,7 +79,13 @@ DEFAULT_LAG            = 20         # early stopping : patience en epochs
 DEFAULT_MIN_EPOCHS     = 5          # ne pas arrêter avant ce nombre d'epochs
 DEFAULT_MAX_EPOCHS     = 50        # plafond de sécurité
 DEFAULT_BATCH_SIZE     = 16
-DEFAULT_DEVICE         = "cpu"      # "cpu" | "cuda" | "mps"
+DEFAULT_DEVICE         = "auto"     # "auto" | "cpu" | "cuda" | "mps"
+# Workers DataLoader (chargement + augmentation des images en parallèle).
+# Sous Windows : 0 OBLIGATOIRE. Le 'spawn' doit pickler le pipeline ketos, qui
+# contient un objet local (transform d'augmentation) → "Can't get local object"
+# / EOFError. Le mono-thread est plus lent : la vitesse vient plutôt du batch
+# et, si besoin, d'un dataset binaire précompilé (ketos compile).
+DEFAULT_WORKERS        = 0 if os.name == "nt" else min(8, (os.cpu_count() or 2))
 
 # Proportions du split (par manuscrit, pas par page)
 SPLIT_TRAIN = 0.80
@@ -115,6 +130,7 @@ class TrainingConfig:
     max_epochs: int
     batch_size: int
     device: str
+    workers: int
     augment: bool
     resize: str             # "union" | "new" | "fail"
     seed: int
@@ -152,6 +168,20 @@ class TrainingReport:
 # 2. UTILITAIRES
 # ══════════════════════════════════════════════════════════════════════════════
 
+def utf8_env() -> dict[str, str]:
+    """
+    Environnement forçant l'UTF-8 pour les sous-processus Python (kraken/ketos).
+
+    Sans cela, ketos hérite de l'encodage cp1252 de Windows : la bibliothèque
+    `rich` plante (UnicodeEncodeError) dès qu'elle affiche un caractère médiéval
+    MUFI absent du cp1252 (ex. Ꝙ U+A758) présent dans l'alphabet d'entraînement.
+    """
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
 def run(cmd: list[str], cwd: Optional[str] = None, capture: bool = False) -> tuple[int, str, str]:
     """Exécute une commande shell, retourne (returncode, stdout, stderr)."""
     log.debug("CMD: %s", " ".join(cmd))
@@ -160,6 +190,9 @@ def run(cmd: list[str], cwd: Optional[str] = None, capture: bool = False) -> tup
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=utf8_env(),
     )
     stdout = result.stdout or ""
     stderr = result.stderr or ""
@@ -192,6 +225,47 @@ def kraken_cmd(args: list[str]) -> list[str]:
     if rc == 0:
         return ["kraken"] + args
     return [sys.executable, "-m", "kraken"] + args
+
+
+def ketos_cmd(args: list[str]) -> list[str]:
+    """
+    Construit la commande ketos (binaire ou point d'entrée Python).
+
+    L'entraînement et l'évaluation passent par `ketos`, PAS par `kraken` :
+    `kraken` ne sert qu'à l'inférence. En fallback, on appelle le point
+    d'entrée console `kraken.ketos:cli`.
+    """
+    rc, _, _ = run(["ketos", "--help"], capture=True)
+    if rc == 0:
+        return ["ketos"] + args
+    return [sys.executable, "-c", "from kraken.ketos import cli; cli()"] + args
+
+
+def resolve_device(device: str) -> str:
+    """
+    Résout et normalise le device d'entraînement pour ketos.
+
+    "auto" → "cuda:0" si un GPU CUDA est disponible, sinon "mps" (Apple) si
+    disponible, sinon "cpu".
+
+    ketos exige un index explicite pour CUDA : un "cuda" nu provoque une erreur
+    "list index out of range". On normalise donc toujours "cuda" → "cuda:0".
+    """
+    if device == "auto":
+        try:
+            import torch
+            if torch.cuda.is_available():
+                device = "cuda"
+            else:
+                mps = getattr(torch.backends, "mps", None)
+                device = "mps" if (mps is not None and mps.is_available()) else "cpu"
+        except Exception as e:  # torch absent ou cassé : on retombe sur le CPU
+            log.debug("Détection automatique du device échouée : %s", e)
+            device = "cpu"
+
+    if device == "cuda":
+        device = "cuda:0"
+    return device
 
 
 def telecharger_modele_base(models_dir: Path, force: bool = False) -> Path:
@@ -261,7 +335,7 @@ def collecter_manuscrits(input_dir: Path) -> list[dict]:
         for slug_dir in sorted(lang_dir.iterdir()):
             if not slug_dir.is_dir():
                 continue
-            xml_files = sorted(slug_dir.glob("*.xml"))
+            xml_files = sorted(slug_dir.glob("*.chocomufin.xml"))
             if not xml_files:
                 continue
             manuscrits.append({
@@ -564,6 +638,46 @@ def charger_split_verrouille(splits_dir: Path) -> Optional[dict[str, Path]]:
 # 4. ENTRAÎNEMENT KRAKEN (ketos train)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def compiler_dataset(split_txt: Path) -> Path:
+    """
+    Précompile un split ALTO (.txt listant des XML) en dataset binaire Arrow.
+
+    Le binaire pré-extrait toutes les images de lignes une seule fois : le
+    chargement devient rapide même en mono-thread. C'est LE remède à la famine
+    du GPU sous Windows, où --workers > 0 plante (pickling du pipeline ketos).
+    Ne recompile que si l'Arrow est absent ou plus ancien que le .txt.
+
+    NB : exige pyarrow < 24 (la 24.0.0 segfault à l'écriture sous Windows).
+
+    Returns:
+        Le chemin .arrow si la compilation réussit, sinon le .txt d'origine
+        (repli transparent sur ALTO).
+    """
+    arrow = split_txt.with_suffix(".arrow")
+    if arrow.exists() and arrow.stat().st_mtime >= split_txt.stat().st_mtime:
+        log.info("Dataset binaire à jour : %s", arrow.name)
+        return arrow
+
+    log.info("Compilation du dataset binaire : %s → %s ...", split_txt.name, arrow.name)
+    cmd = ketos_cmd(["compile", "-f", "alto", "-F", str(split_txt), "-o", str(arrow)])
+    result = subprocess.run(cmd, env=utf8_env())
+    if result.returncode != 0 or not arrow.exists():
+        log.warning(
+            "Compilation binaire échouée (code %d) — repli sur ALTO pour %s. "
+            "Vérifier la version de pyarrow (< 24 requis sous Windows).",
+            result.returncode, split_txt.name,
+        )
+        return split_txt
+
+    log.info("Dataset binaire prêt : %s", arrow.name)
+    return arrow
+
+
+def compiler_datasets(split_paths: dict[str, Path]) -> dict[str, Path]:
+    """Compile chaque split en Arrow ; repli ALTO indépendant par split."""
+    return {name: compiler_dataset(p) for name, p in split_paths.items()}
+
+
 def construire_commande_train(
     config: TrainingConfig,
     split_paths: dict[str, Path],
@@ -586,19 +700,29 @@ def construire_commande_train(
     Returns:
         Liste de tokens constituant la commande shell.
     """
-    base = kraken_cmd([
+    # Format auto-détecté : .arrow → dataset binaire précompilé (chargement
+    # rapide), sinon ALTO brut. Le binaire est indispensable sous Windows où
+    # --workers > 0 plante : il évite la famine du GPU en mono-thread.
+    train_path = split_paths["train"]
+    dev_path = split_paths["dev"]
+    fmt = "binary" if str(train_path).endswith(".arrow") else "alto"
+
+    base = ketos_cmd([
         "-d", config.device,
+        "--workers", str(config.workers),
         "train",
-        "-f", "alto",
+        "-f", fmt,
+        "-B", str(config.batch_size),
         "--resize", config.resize,
         "-i", str(model_base_path),
         "-o", str(Path(config.output_dir) / "model_13c"),
         "-r", str(config.learning_rate),
+        "-q", "early",
         "--lag", str(config.lag),
         "--min-epochs", str(config.min_epochs),
-        "--max-epochs", str(config.max_epochs),
-        "-t", str(split_paths["train"]),
-        "-e", str(split_paths["dev"]),
+        "-N", str(config.max_epochs),
+        "-t", str(train_path),
+        "-e", str(dev_path),
     ])
 
     if config.augment:
@@ -674,7 +798,8 @@ def lancer_entrainement(
         dry_run         : affiche la commande sans l'exécuter.
 
     Returns:
-        Liste des EpochRecord collectés pendant l'entraînement.
+        Liste des EpochRecord collectés (vide : ketos affiche ses propres
+        métriques, on ne les re-parse pas).
     """
     cmd = construire_commande_train(config, split_paths, model_base_path)
 
@@ -687,34 +812,25 @@ def lancer_entrainement(
 
     Path(config.output_dir).mkdir(parents=True, exist_ok=True)
 
-    epochs: list[EpochRecord] = []
+    # IMPORTANT : on laisse ketos écrire DIRECTEMENT sur le terminal au lieu de
+    # capturer sa sortie dans un pipe. Sa barre de progression `rich` ne
+    # s'affiche que sur un vrai terminal (TTY) ; capturée dans un pipe, elle
+    # est totalement masquée — l'entraînement paraît alors « figé » alors
+    # qu'il tourne. L'inconvénient : pas de fichier train.log (les checkpoints
+    # sont de toute façon sauvegardés dans output_dir).
+    log.info("Entraînement en cours — la barre de progression ketos s'affiche ci-dessous.")
     t_start = time.perf_counter()
 
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
+    result = subprocess.run(cmd, env=utf8_env())
 
-    log_path = Path(config.output_dir) / "train.log"
-    with open(log_path, "w", encoding="utf-8") as log_file:
-        for ligne in process.stdout:
-            print(ligne, end="", flush=True)
-            log_file.write(ligne)
+    elapsed_min = (time.perf_counter() - t_start) / 60.0
+    if result.returncode != 0:
+        log.error("ketos train terminé avec code %d (durée %.1f min)",
+                  result.returncode, elapsed_min)
+    else:
+        log.info("Entraînement ketos terminé en %.1f min.", elapsed_min)
 
-            record = parser_progression_kraken(ligne)
-            if record:
-                record.elapsed_s = time.perf_counter() - t_start
-                epochs.append(record)
-
-    process.wait()
-    if process.returncode != 0:
-        log.error("ketos train terminé avec code %d — voir %s", process.returncode, log_path)
-
-    log.info("Log d'entraînement sauvegardé dans %s", log_path)
-    return epochs
+    return []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -762,10 +878,12 @@ def evaluer_modele(
     Returns:
         (cer, accuracy) — CER et accuracy moyens sur le jeu de test.
     """
-    cmd = kraken_cmd([
+    fmt = "binary" if str(test_txt).endswith(".arrow") else "alto"
+    cmd = ketos_cmd([
         "-d", device,
+        "--workers", str(DEFAULT_WORKERS),
         "test",
-        "-f", "alto",
+        "-f", fmt,
         "-m", str(model_path),
         "-e", str(test_txt),
     ])
@@ -977,6 +1095,7 @@ def pipeline(
     max_epochs:    int   = DEFAULT_MAX_EPOCHS,
     batch_size:    int   = DEFAULT_BATCH_SIZE,
     device:        str   = DEFAULT_DEVICE,
+    workers:       int   = DEFAULT_WORKERS,
     augment:       bool  = True,
     resize:        str   = "union",
     seed:          int   = 42,
@@ -1140,6 +1259,7 @@ def pipeline(
         max_epochs=max_epochs,
         batch_size=batch_size,
         device=device,
+        workers=workers,
         augment=augment,
         resize=resize,
         seed=seed,
@@ -1153,6 +1273,15 @@ def pipeline(
     log.info("  Data augment.  : %s", "activée" if augment else "désactivée")
     log.info("  Resize mode    : %s  (union = intègre nouveaux caractères latins)", resize)
     log.info("  Device         : %s", device)
+    log.info("  Workers        : %d  (0 = chargement dans le processus principal)", workers)
+
+    # ── Précompilation des datasets binaires ──────────────────────────────────
+    # Transforme train/dev/test (ALTO) en .arrow pré-extraits une fois pour
+    # toutes : chaque epoch charge alors sans re-parser le XML ni re-décoder les
+    # images → le GPU n'est plus affamé. En cas d'échec, repli automatique ALTO.
+    data_paths = split_paths
+    if not dry_run and not split_only:
+        data_paths = compiler_datasets(split_paths)
 
     if not split_only:
         if eval_only:
@@ -1164,7 +1293,7 @@ def pipeline(
             log.info("Évaluation du modèle : %s", model_to_eval)
             if not dry_run:
                 test_cer, test_accuracy = evaluer_modele(
-                    model_to_eval, split_paths["test"], device=device
+                    model_to_eval, data_paths["test"], device=device
                 )
             best_model_path = str(model_to_eval)
             completed = True
@@ -1173,7 +1302,7 @@ def pipeline(
             # ── Entraînement ──────────────────────────────────────────────────
             try:
                 epochs_records = lancer_entrainement(
-                    config, split_paths, model_base, dry_run=dry_run
+                    config, data_paths, model_base, dry_run=dry_run
                 )
 
                 # Meilleure epoch (CER dev minimal)
@@ -1195,7 +1324,7 @@ def pipeline(
                     # Évaluation finale sur le test
                     if not dry_run:
                         test_cer, test_accuracy = evaluer_modele(
-                            best_model, split_paths["test"], device=device
+                            best_model, data_paths["test"], device=device
                         )
                 else:
                     log.warning("Aucun modèle trouvé après entraînement.")
@@ -1227,7 +1356,7 @@ def pipeline(
 
     if not dry_run:
         json_path, txt_path = generer_rapport(rapport, reports_dir)
-        print(open(txt_path).read())
+        print(Path(txt_path).read_text(encoding="utf-8"))
 
     return rapport
 
@@ -1308,9 +1437,18 @@ def main() -> None:
     )
     parser.add_argument(
         "--device",
-        choices=["cpu", "cuda", "mps"],
+        choices=["auto", "cpu", "cuda", "mps"],
         default=DEFAULT_DEVICE,
-        help="Device d'entraînement",
+        help="Device d'entraînement ('auto' = CUDA si disponible, sinon CPU)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help=(
+            "Workers DataLoader. 0 (défaut sous Windows) charge dans le processus "
+            "principal et évite l'erreur de spawn multiprocessing."
+        ),
     )
     parser.add_argument(
         "--no-augment",
@@ -1380,6 +1518,30 @@ def main() -> None:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Détection environnement SageMaker : surcharge les chemins si on tourne
+    # dans un container SageMaker (variables SM_CHANNEL_* injectées automatiquement)
+    sm_train = os.environ.get("SM_CHANNEL_TRAIN")
+    sm_model_dir = os.environ.get("SM_MODEL_DIR")
+    sm_splits = os.environ.get("SM_CHANNEL_SPLITS")
+    sm_basemodel = os.environ.get("SM_CHANNEL_BASEMODEL")
+
+    if sm_train:
+        log.info("Environnement SageMaker détecté — chemins /opt/ml/ utilisés")
+        args.input = Path(sm_train)
+    if sm_model_dir:
+        args.models_dir = Path(sm_model_dir)
+    if sm_splits:
+        args.splits_dir = Path(sm_splits)
+    if sm_basemodel:
+        candidates = list(Path(sm_basemodel).glob("*.mlmodel"))
+        if candidates:
+            args.model_base = candidates[0]
+            log.info("Modèle de base SageMaker : %s", args.model_base)
+
+    device = resolve_device(args.device)
+    if args.device == "auto":
+        log.info("Device auto-détecté : %s", device)
+
     pipeline(
         input_dir=args.input,
         models_dir=args.models_dir,
@@ -1391,7 +1553,8 @@ def main() -> None:
         min_epochs=args.min_epochs,
         max_epochs=args.max_epochs,
         batch_size=args.batch_size,
-        device=args.device,
+        device=device,
+        workers=args.workers,
         augment=not args.no_augment,
         resize=args.resize,
         seed=args.seed,
