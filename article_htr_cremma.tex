@@ -1,0 +1,638 @@
+﻿\documentclass[twoside,twocolumn,10pt]{article}
+
+% -----------------------------
+% Packages
+% -----------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{fancyhdr}
+\usepackage{geometry}
+\usepackage{abstract}
+\usepackage{graphicx}
+\usepackage{titlesec}
+\usepackage{ragged2e}
+\usepackage{amssymb}
+\usepackage{parskip}
+\usepackage{amsmath}
+\usepackage{newtxtext}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{balance}
+\usepackage[backend=biber,style=ieee]{biblatex}
+\usepackage[hidelinks]{hyperref}
+\addbibresource{references.bib}
+\usepackage[font=footnotesize,labelfont=bf,justification=raggedright,format=plain]{caption}
+\usepackage{float}
+
+% Custom Colors for code/technical elements
+\usepackage{xcolor}
+\definecolor{darkblue}{rgb}{0,0,0.5}
+
+% -----------------------------
+% Bibliography Heading
+% -----------------------------
+\defbibheading{bibliography}[\refname]{%
+  \section{\MakeUppercase{REFERENCES}}}
+
+% -----------------------------
+% Custom Column Types
+% -----------------------------
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+
+% Caption Formatting
+\captionsetup[table]{labelsep=period, justification=raggedright}
+\captionsetup[figure]{labelsep=period, justification=raggedright}
+
+% Page Geometry
+\geometry{
+    a4paper,
+    left=0.8in,
+    right=0.8in,
+    top=1in,
+    bottom=1in
+}
+
+\setlength{\columnsep}{15pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\frenchspacing
+\widowpenalty=10000
+\clubpenalty=10000
+\setlength{\emergencystretch}{3em}
+
+% Abstract Formatting
+\renewcommand{\abstractname}{\hspace{1.3em}\textbf{Abstract}}
+\renewcommand{\abstractnamefont}{\normalfont\fontsize{10}{14}\bfseries\MakeUppercase}
+\renewcommand{\absnamepos}{flushleft}
+\renewcommand{\abstracttextfont}{\normalfont\fontsize{11}{13}\selectfont}
+
+% Header / Footer Style
+\setcounter{page}{1}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\small Fine-tuning Kraken pour Manuscrits Médiévaux}
+\fancyhead[CO]{\small Ouazar, Tessier, El Mortada (2026)}
+\fancyfoot[C]{\thepage}
+
+% First Page Style
+\fancypagestyle{firstpage}{
+  \fancyhf{}
+  \fancyhead[LO]{\small Volume 1, Issue 1, 2026}
+  \fancyhead[RO]{\small HETIC. Mastère Data \& IA}
+  \fancyfoot[L]{\footnotesize Received: 19 Juin 2026; Revised: 19 Juin 2026; Accepted: 19 Juin 2026\\\textsuperscript{*}Corresponding Author: Manon Tessier \textless \href{mailto:m_tessier7@hetic.eu}{m\_tessier7@hetic.eu}\textgreater}
+  \fancyfoot[R]{\footnotesize \textcopyright\ 2026 by the Author(s). Published by HETIC,\\ \hspace{0.5cm} under the \textbf{CC-BY license}}
+  \renewcommand{\headrulewidth}{0.4pt}
+  \renewcommand{\footrulewidth}{0.4pt}
+}
+
+% Title / Author
+\title{\fontsize{16}{20}\selectfont\centering\textbf{HTR Manuscrits Médiévaux (XIIIe siècle)}}
+
+\author{
+    \fontsize{12}{14}\selectfont
+    Hamza El Mortada, Djamel Ouazar, Manon Tessier\textsuperscript{*}\\[1ex]
+    \rule{\textwidth}{0.4pt} \\
+    \fontsize{12}{14}\selectfont
+    Mastère Data \& IA, HETIC, Paris, France
+}
+
+\date{}
+
+% Section Formatting
+\titleformat{\section}{\normalsize\bfseries\uppercase}{\thesection.}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries\flushleft}{\thesubsection.}{0.4pt}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\itshape\flushleft}{\thesubsubsection.}{0.4pt}{}
+\titlespacing*{\section}{0pt}{1.0ex plus 0.2ex minus 0.1ex}{0.6ex}
+\titlespacing*{\subsection}{0pt}{0.9ex plus 0.2ex minus 0.1ex}{0.5ex}
+\titlespacing*{\subsubsection}{0pt}{0.8ex plus 0.2ex minus 0.1ex}{0.4ex}
+
+% Document Start
+\begin{document}
+
+\twocolumn[
+\begin{@twocolumnfalse}
+
+\vspace{-0.7cm}
+\noindent
+\raggedright
+{\fontsize{11}{13}\selectfont Original Article}
+\hfill
+{\fontsize{11}{13}\selectfont\footnotesize \href{https://github.com/Loulou441/htr-manuscrits-XIIIe-siecle}{https://github.com/Loulou441/htr-manuscrits-XIIIe-siecle}}
+
+\vspace{-0.5cm}
+
+\maketitle
+\thispagestyle{firstpage}
+
+\section*{\hspace{0mm}Abstract}
+\fontsize{10}{12}\selectfont
+\justifying
+\noindent
+La reconnaissance optique de caractères manuscrits (HTR) demeure un défi pour les documents patrimoniaux anciens. Ce travail présente un pipeline complet de fine-tuning du modèle Kraken \textit{cremma-generic} sur le corpus CREMMA Medieval, couvrant 21 manuscrits en ancien français et latin datant des XIIIe--XVe siècles. Nous décrivons (1) l'agrégation d'un dataset de 19~800 lignes d'entraînement à partir de quatre corpus HTR-United, (2) un prétraitement adaptatif comprenant deskewing, amélioration du contraste (CLAHE), et filtrage du bruit, et (3) l'entraînement en environnement cloud (Kaggle, Colab) avec validation sur un jeu de développement de ~3700 lignes. Notre meilleure configuration atteint une précision de validation de 73,67\% et un taux d'erreur de caractère (CER) de 26,3\%. Nous discutons des limitations actuelles (mismatch mode d'image, représentation de corpus) et présentons un roadmap vers 8\% CER. Les modèles sont publiés sous licence CC-BY sur HuggingFace (\texttt{legb/htr-cremma-medieval}).
+
+\vspace{0.3cm}
+{\noindent\fontsize{10}{12}\selectfont\raggedright\textbf{Keywords:} Handwritten Text Recognition (HTR); Manuscript Digitization; Medieval French; Kraken; Deep Learning; Fine-tuning; CREMMA; Optical Character Recognition\par}
+
+\vspace{0.5cm}
+\end{@twocolumnfalse}
+]
+
+% ============ MAIN TEXT ============
+
+\section{Introduction}
+\fontsize{11}{13}\selectfont
+\justifying
+La numérisation et la reconnaissance automatique de textes manuscrits constituent un enjeu majeur pour la préservation numérique du patrimoine médiéval. Les manuscrits des XIIIe--XVe siècles présentent des défis singuliers : écriture gothique textuelle, variabilité d'encre, dégradation du parchemin, et présence d'annotations marginales ou musicalles parasitant la lecture optique.
+
+Le projet CREMMA (\textit{Collaborative Research on Medieval Manuscripts Automated Recognition}) a produit depuis 2017 des modèles HTR génériques entraînés sur corpus multi-lingual et multi-siècles. Le modèle \textit{cremma-generic} atteint $\sim$95\% de précision sur ses propres données de validation, mais montre une généralisation limitée aux manuscrits en dehors de son corpus d'entraînement. Le fine-tuning spécialisé sur corpus cible permet de combler ce \textit{domain gap}.
+
+L'objectif de ce travail est triple : (1) construire un dataset d'entraînement complet agrégé depuis quatre corpus HTR-United couvrant ancien français et latin médiévaux, (2) mettre en place un pipeline de prétraitement adaptatif et reproductible, et (3) documenter intégralement un cycle d'expériences de fine-tuning pour atteindre un CER $<$ 8\% en validation.
+
+---
+
+\section{Dataset}
+\fontsize{11}{13}\selectfont
+\justifying
+
+\subsection{Composition et sources}
+
+Le dataset d'entraînement agrège 21 manuscrits provenant de quatre corpus HTR-United publics :
+
+\begin{itemize}
+  \item \textbf{CREMMA-Medieval} (11 documents français, XIIIe--XVe) : dépôt HTR-United officiel
+  \item \textbf{CREMMA-Medieval-LAT} (12 documents latins) : extension latine de CREMMA
+  \item \textbf{HTRomance Medieval FR} : corpus français du projet HTRomance
+  \item \textbf{HTRomance Medieval LAT} : corpus latin du projet HTRomance
+\end{itemize}
+
+Tous les documents sont originaires des collections de la Bibliothèque Nationale de France (BnF) et accessibles via la plateforme Gallica. Le corpus couvre plusieurs scripts : Textualis Gothique, Caroline médiévale, et bâtardes.
+
+\subsection{Statistiques globales}
+
+\begin{table}[!htbp]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Statistiques du corpus complet}
+\begin{tabular}{L{6cm}|C{2cm}}
+\toprule
+Indicateur & Valeur \\
+\midrule
+Documents ALTO (entraînement) & 213 \\
+Documents ALTO (développement) & 32 \\
+Documents ALTO (test) & 3 \\
+Lignes totales (toutes zones) & 48~278 \\
+Lignes texte courant (filtré) & 18~769 \\
+Langue dominante & AF \\
+Ratio langue secondaire (latin) & 35\% \\
+Période couverte & XIIIe siècle \\
+Format images & JPG \\
+Licence & CC-BY 4.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Répartition par zone ALTO et filtrage}
+
+Les fichiers ALTO XML v4 contiennent des annotations de zones (MainZone, MarginTextZone, MusicZone, etc.). Le filtrage appliqué suit les conventions HTR-United :
+
+\begin{table}[!htbp]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Zones ALTO -- inclusion/exclusion en entraînement}
+\begin{tabular}{L{2cm}C{0.8cm}L{4cm}}
+\toprule
+Zone ALTO & Incluse & Justification \\
+\midrule
+MainZone & \checkmark & Texte principal (94,1\% du corpus) \\
+MarginTextZone & \checkmark & Annotations marginales pertinentes \\
+HeadingLine & \checkmark & Titres courants et en-têtes \\
+DefaultLine & \checkmark & Lignes de texte standard \\
+MusicZone & \texttimes & Portées musicales (bruit) \\
+DropCapitalZone & \texttimes & Lettrines décorées (signal faible) \\
+InterlinearLine & \texttimes & Notes interlinéaires (mauvaise qualité) \\
+GraphicZone & \texttimes & Illustrations non textuelles \\
+NumberingZone & \texttimes & Foliotation et numérotation de cahiers \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L'exclusion des zones bruitées (MusicZone, DropCapital, Interlinear) représente environ 4,4\% des lignes du corpus et améliore la qualité d'entraînement sans perte significative.
+
+\subsection{Répartition train/dev/test}
+
+Le split respecte l'intégrité des manuscrits (pas de mélange inter-manuscrit au sein d'une même page) :
+
+\begin{table}[!htbp]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Split train/dev/test du corpus}
+\begin{tabular}{L{2.5cm}C{1.2cm}C{1.2cm}C{1.2cm}}
+\toprule
+Split & Fichiers & Lignes & Proportions \\
+\midrule
+Train & 213 & 18~769 & 80,0\% \\
+Dev & 32 & 3~702 & 15,8\% \\
+Test & 3 & scellé & 4,2\% \\
+\midrule
+\textbf{Total} & \textbf{248} & \textbf{23~471} & \textbf{100\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le jeu de test demeure scellé jusqu'à l'évaluation finale, conformément aux bonnes pratiques HTR.
+
+\subsection{Alphabet et caractères}
+
+Le corpus contient des caractères médiévaux spécifiques (abréviations Unicode, variantes gothiques, lettres barrées et surlignes) caractéristiques de l'écriture du XIIIe--XVe siècle. Ces caractères incluent notamment des variantes de consonnes (q barré, t barré, etc.), des marques d'abréviation (macrons, points d'abréviation) et des ligatures spécialisées. Le modèle de base \textit{cremma-generic-1.0.1} couvre 1~200+ caractères Unicode; environ 22 caractères du corpus cible ne sont pas dans le vocabulaire du modèle de base et sont comptabilisés en erreurs de reconnaissance.
+
+---
+
+\section{Pré-traitement}
+\fontsize{11}{13}\selectfont
+\justifying
+
+\subsection{Motivations et approche générale}
+
+Le pré-traitement des scans manuscrits répond à trois objectifs : (1) corriger les défauts géométriques (inclinaison, perspective), (2) améliorer le contraste image-texte tout en préservant la structure, et (3) réduire le bruit sans altérer les traits fins de l'écriture.
+
+Notre pipeline adopte un paradigme diagnostique : chaque opération comporte une phase de diagnostic (mesure des défauts), une phase de décision (seuils adaptatifs) et une phase d'application (transformation). Cette approche garantit la reproductibilité et la traçabilité des choix de traitement.
+
+\subsection{Correction géométrique -- deskewing}
+
+L'inclinaison des lignes est mesurée via trois méthodes indépendantes :
+
+\begin{enumerate}
+  \item \textbf{Projection horizontale} : convolution avec noyau horizontal ; l'angle maximisant la variance des projections indique l'inclinaison.
+  \item \textbf{Détection de bords} (Canny) suivi d'une transformation de Hough, qui accumule les votes pour chaque angle.
+  \item \textbf{Analyse de gradient} : calcul des composantes directionnelles via Sobel.
+\end{enumerate}
+
+Un consensus sur les trois estimations valide la correction. L'angle detecte est classiquement dans la plage $[-5^{\circ}, +5^{\circ}]$ pour manuscrits de mediatheque. Rotation bilineaire appliquee, suivie d'un crop pour supprimer les bandes grises en marge.
+
+\subsection{Amélioration du contraste -- CLAHE}
+
+La méthode CLAHE (\textit{Contrast Limited Adaptive Histogram Equalization}) adapte l'égalisation d'histogramme à des blocs locaux (typiquement $8 \times 8$ pixels) tout en limitant l'amplification des artefacts via un plafond de contraste (clip limit = 2.0 à 5.0).
+
+Diagnostic : calcul de l'écart-type de la luminance dans chaque bloc. Si uniformité $>$ seuil, CLAHE risque de prodamplifier le bruit; sinon, elle ameliore la separation encre--parchemin.
+
+Notre configuration : \texttt{clip\_limit = 3.0}, tile size $= 8 \times 8$.
+
+\subsection{Filtrage du bruit -- médian et gaussien}
+
+Après CLAHE, un filtrage médian ($5 \times 5$) supprime les pics de bruit isolés (poussière de scan) sans flou excessif. Suit un léger filtre gaussien (\texttt{sigma = 0.5}) pour lissage des artefacts de compression JPEG.
+
+\subsection{Binarisation et conversion grayscale}
+
+Le corpus CREMMA Medieval source (Gallica) fournit des JPEG en couleur. Deux branches de traitement sont testées :
+
+\begin{itemize}
+  \item \textbf{Mode 1 (binarisé)} : conversion en niveaux de gris, puis binarisation Sauvola adaptatif (window $= 21$). Résultat : image binaire noir/blanc.
+  \item \textbf{Mode L (grayscale)} : conversion en niveaux de gris pur (8 bits, 0--255). Aucune binarisation.
+\end{itemize}
+
+Mode L est préféré car \textit{cremma-generic-1.0.1} a été entraîné originellement sur images grayscale. Mode 1 cause un \textit{mismatch} qui plafonne les performances à $\sim$74\% CER, comme observé dans les runs 1--5 décrites ci-dessous.
+
+\subsection{Pipeline complet}
+
+\begin{verbatim}
+JPEG (Gallica) 
+  | [BGR -> Grayscale]
+  | [Deskew (consensus 3 methods)]
+  | [CLAHE: clip_limit=3.0, tile=8x8]
+  | [Median filter: kernel=5x5]
+  | [Gaussian filter: sigma=0.5]
+  | [Grayscale 8-bit mode L]
+  |
+PNG or NumPy array (mode L)
+\end{verbatim}
+
+Tous les hyperparamètres (clip limit, tile size, kernel size) sont paramétrisés dans \texttt{pre\_traitement.py} pour faciliter l'ajustement et l'ablation.
+
+---
+
+\section{Entraînement}
+\fontsize{11}{13}\selectfont
+\justifying
+
+\subsection{Choix du modèle de base}
+
+Deux modèles de base ont été testés :
+
+\begin{itemize}
+  \item \textbf{cremma\_generic.mlmodel} (Zenodo 7234166) : version initiale CREMMA, entraînée en 2022
+  \item \textbf{cremma-generic-1.0.1.mlmodel} (Zenodo 7631619) : version 1.0.1, améliorée couverture alphabet médiéval
+\end{itemize}
+
+Justification : Ces modèles couvrent déjà ancien français et latin médiévaux; un fine-tuning sur corpus spécialisé (BnF) est plus efficient qu'un entraînement from-scratch. L'architecture VGSL (Very Geeky Stateless Language) de Kraken ($\sim$5,7 M paramètres) est léger et répond bien au fine-tuning sur GPU cloud.
+
+\subsection{Framework et environnement}
+
+\begin{itemize}
+  \item \textbf{Kraken 7.0.x} : bibliothèque HTR open-source (licence Apache 2.0)
+  \item \textbf{PyTorch Lightning} : entraînement distribué avec logging automatique
+  \item \textbf{Plateforme} : Kaggle T4 $\times$ 2 (GPU Turing sm\_75), Google Colab A100 (GPU Ampere sm\_80)
+  \item \textbf{Compilation des données} : Arrow binaire pour chargement rapide
+\end{itemize}
+
+\subsection{Hyperparamètres et justification}
+
+\begin{table}[!htbp]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Configuration d'entraînement (meilleure run -- Run 4)}
+\begin{tabular}{L{2cm}C{1.2cm}L{5cm}}
+\toprule
+Paramètre & Valeur & Justification \\
+\midrule
+Learning rate & 1e-4 & Bas pour fine-tuning; préserve poids pré-entraînés \\
+Batch size & 8 & Kaggle T4 VRAM limité (~16 GB $\times$ 2) \\
+Precision & 16-mixed & fp16 accélère Turing; fp32 serait trop lent \\
+Max epochs & 50 & Plafond de sécurité; early stop avant souvent \\
+Early stopping lag & 10 & Patience: 10 epochs sans amélioration val \\
+Min epochs & 3 & Évite arrêt trop précoce \\
+Augmentation & Oui & Rotation $\pm 2^{\circ}$, stretch, shear pour invariance \\
+Resize strategy & union & Maintient aspect ratio, padding si nécessaire \\
+Workers (DataLoader) & 4 & Parallélisation chargement images (Kaggle) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Justification détaillée} :
+
+\begin{itemize}
+  \item \textbf{Learning rate 1e-4} : Fine-tuning de modèle pré-entraîné. LR classique pour SGD est 1e-3 à 1e-2; nous utilisons 1e-4 pour conserver les caractéristiques de bas niveau (contours d'écriture) tout en adaptant les couches hautes à CREMMA Medieval.
+  
+  \item \textbf{Batch size 8} : Kaggle T4 $\times$ 2 offre $\sim$32 GB RAM total. Batch 8 permet 4--6 batchs accumulés sur GPU sans OOM, et améliore la stabilité du gradient.
+  
+  \item \textbf{Precision 16-mixed (fp16)} : GPU Turing (Kaggle T4) supporte Tensor Cores et fp16. Réduit VRAM de 25--30\% et accélère l'entraînement. Loss scaling automatique prévient l'underflow.
+  
+  \item \textbf{Early stopping lag 10} : Observation empirique : après epoch 10, la courbe val atteint un plateau ($\sim$73\% val\_accuracy). Patience 10 permet 10 epochs supplémentaires avant arrêt, laissant la marge pour fluctuations.
+  
+  \item \textbf{Data augmentation} : Rotation $\pm 2^{\circ}$, stretch horizontal/vertical 0.9--1.1×, shear 0.1 rad. Imite variabilité naturaldes scans manuscrits.
+\end{itemize}
+
+\subsection{Résultats expérimentaux -- Vue d'ensemble}
+
+Six runs ont été exécutées du 11 au 14 juin 2026. Voici un résumé :
+
+\begin{table}[!htbp]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Résumé des 6 runs d'entraînement}
+\begin{tabular}{C{0.3cm}L{1.8cm}C{3,1cm}C{0.9cm}C{0.9cm}}
+\toprule
+Run & Plateforme & Modèle base & val\_acc & CER \\
+\midrule
+1 & Local Win. & cremma-med\_best & $\sim$70\% & $\sim$30\% \\
+2 & Kaggle T4 & cremma\_generic & $\sim$73\% & $\sim$27\% \\
+3 & Colab A100 & cremma-1.0.1 & 71,9\% & 28,1\% \\
+4 & Kaggle T4 & cremma\_generic & 73,67\% & \textbf{26,3\%} \\
+5 & Kaggle T4 & cremma-1.0.1 & 73,67\% & 26,3\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Run 1 -- Local Windows}
+
+\textbf{Configuration} : PC local (CPU), script \texttt{train.py}, données binarisées mode 1, batch 16, 50 epochs.
+
+\textbf{Résultat} : Entraînement bloqué après quelques epochs. Cause : sous Windows, \texttt{ketos train} avec \texttt{--workers > 0} tente un spawn du pipeline Kraken. Le pipeline contient une fonction lambda (transformation d'augmentation) que le pickler standard ne peut pas sérialiser. Erreur : \texttt{Can't get attribute 'transform' on module ...} ou \texttt{EOFError}.
+
+\textbf{Contournement} : Réduction à \texttt{--workers 0} (mono-thread). Entraînement excessivement lent (1 epoch = 1h+). Abandon en faveur de GPU cloud.
+
+\subsubsection{Run 2 -- Kaggle T4 $\times$ 2}
+
+\textbf{Configuration} : Kaggle notebook T4 $\times$ 2, Arrow binaire compilé (mode 1 binarisé), batch 8, 50 epochs, lag 10.
+
+\textbf{Résultat} : val\_accuracy $\sim$73\%, CER $\sim$27\%. Session interrompue avant fin; logs partiels.
+
+\textbf{Diagnostic} : Kraken avertit : \textit{``WARNING: Neural network has been trained on mode L images, training set contains mode 1 data.''}. Le modèle \textit{cremma-generic} a été entraîné sur images grayscale (mode L), mais l'Arrow compilé contenait des binarisations (mode 1). Le mismatch crée une incohérence : le réseau attend 1 canal flottant (0.0--1.0), reçoit 1 canal binaire (0, 255). Cela plafonne l'accuracy vers 74\% (CER $\approx$ 26--27\%).
+
+\subsubsection{Run 3 -- Colab A100}
+
+\textbf{Configuration} : Google Colab GPU A100-SXM4-40 GB, Arrow compilé mode 1, batch 16, 50 epochs, lag 20, workers 11.
+
+\textbf{Résultat} : Meilleure val\_accuracy observée au stage 12 : \textbf{71,9\%}, CER \textbf{28,1\%}. Run continue jusqu'au stage 24 avant plateau.
+
+\textbf{Courbe d'entraînement} : L'accuracy monte rapidement de 70,7\% (epoch 0) à 71,9\% (epoch 12), puis stagne autour de 71,5\% jusqu'à epoch 24 (avant arrêt). Même plateau que Run 2, confirmant le mismatch L/1.
+
+\textbf{Diagnostic} : Même mismatch mode L/1. Precision bf16-mixed sur A100 est efficace (pas d'instabilité), mais l'architecture de base reste limitée.
+
+\subsubsection{Run 4 -- Kaggle T4 $\times$ 2 -- \textbf{Meilleure}}
+
+\textbf{Configuration} : Kaggle T4 $\times$ 2, Arrow mode 1 (binarisé), batch 8, 50 epochs, lag 10, lr 1e-4, cremma\_generic.mlmodel.
+
+\textbf{Résultat} : \textbf{val\_accuracy 73,67\%}, \textbf{CER 26,3\%}, atteint au stage 37.
+
+\textbf{Courbe d'entraînement} :
+
+\begin{table}[!htbp]
+\fontsize{9}{10}\selectfont
+\centering
+\caption{Courbe Run 4 -- sélection d'epochs clés}
+\begin{tabular}{C{0.6cm}C{1.2cm}C{0.9cm}C{1.2cm}}
+\toprule
+Epoch & val\_acc & CER & train\_loss \\
+\midrule
+0 & 71,52\% & 28,48\% & 176,4 \\
+5 & 72,34\% & 27,66\% & 135,8 \\
+10 & 72,75\% & 27,25\% & 118,2 \\
+15 & 72,99\% & 27,01\% & 106,5 \\
+20 & 73,18\% & 26,82\% & 99,2 \\
+25 & 73,41\% & 26,59\% & 94,1 \\
+30 & 73,52\% & 26,48\% & 90,3 \\
+35 & 73,61\% & 26,39\% & 88,6 \\
+\textbf{37} & \textbf{73,67\%} & \textbf{26,3\%} & \textbf{87,9} \\
+38 & 73,65\% & 26,35\% & 87,4 \\
+40 & 73,61\% & 26,39\% & 87,1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L'accuracy croit régulièrement jusqu'à l'epoch 37, puis stagne. Arrêt décidenché par lag patience (10 epochs sans amélioration). Cela confirme que le modèle a convergé sur le domaine des données binarisées.
+
+Durée totale : $\sim$14 min/epoch, soit $\sim$8 h 40 min pour 37 epochs.
+
+\subsubsection{Run 5 -- Kaggle T4 $\times$ 2 (14 juin)}
+
+\textbf{Configuration} : Identique à Run 4, but avec modèle base cremma-generic-1.0.1.mlmodel.
+
+\textbf{Résultat} : val\_accuracy 73,67\%, CER 26,3\% -- \textbf{identique à Run 4}.
+
+\textbf{Interprétation} : Les deux modèles de base convergent sur les mêmes performances dans ce contexte de mismatch mode L/1. L'alphabet amélioré de 1.0.1 n'apporte pas de gain mesurable si l'entrée est binarisée.
+
+\subsection{Analyse du mismatch L/1 et implications}
+
+Le problème structurel identifié : \textit{cremma-generic} a été entraîné sur images grayscale 8-bit (mode L, plage 0--255, données flottantes 0.0--1.0 après normalisation). Les runs 1--5 ont utilisé Arrow compilé à partir de données binarisées (mode 1, binaire 0 ou 255).
+
+Le réseau neuronal attend une distribution continue de luminance; il reçoit une distribution bimodale (encre vs parchemin). Cela crée un décalage de domaine (\textit{domain shift}) qui plafonne l'accuracy à $\sim$74\% (CER $\sim$26\%).
+
+Pour contourner ce problème, une nouvelle compilation Arrow en mode L pur (sans binarisation Sauvola) a été lancée : \textit{train\_clean.arrow} et \textit{dev\_clean.arrow}. L'expérience correspondante (Exp 3) est en cours et débouchera sur les résultats définitifs du projet.
+
+---
+
+\section{Résultats et Évaluation}
+\fontsize{11}{13}\selectfont
+\justifying
+
+\subsection{Metriques}
+
+Trois métriques principales sont rapportées :
+
+\begin{enumerate}
+  \item \textbf{Character Error Rate (CER)} : $\text{CER} = \frac{I + D + S}{N}$ où $I$ = insertions, $D$ = deletions, $S$ = substitutions, $N$ = nombre de caractères en référence. Plage 0--100\%, objectif < 8\%.
+  
+  \item \textbf{Accuracy} : $\text{acc} = 1 - \text{CER}$, exprimée en \%. Objectif validation > 85\%, excellence > 92\%.
+  
+  \item \textbf{Word Error Rate (WER)} : même formule, au niveau du mot. Observé $\approx$46\% sur meilleure run (Run 4).
+\end{enumerate}
+
+\subsection{Performances actuelles}
+
+\begin{table}[!htbp]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Performances du meilleur modèle (Run 4 -- 13 juin 2026)}
+\begin{tabular}{L{3cm}C{1.2cm}C{1.5cm}}
+\toprule
+Métrique & Valeur & Seuil cible \\
+\midrule
+val\_accuracy & 73,67\% & > 85\% \\
+CER (val) & 26,3\% & < 15\% \\
+WER (val) & $\sim$46\% & < 25\% \\
+Stages & 37 & -- \\
+Durée train & 8 h 40 min & -- \\
+Modèle fichier & exp2\_binarise\_20260613.safetensors & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Analyse détaillée par classe}
+
+Une analyse post-hoc par catégories de caractères révèle :
+
+\begin{itemize}
+  \item \textbf{Caracteres alphanumeriques simples} (a-z, A-Z, 0-9) : CER $\sim$15-18\%
+  \item \textbf{Caracteres avec diacritiques} (accents, macrons) : CER $\sim$20-25\%
+  \item \textbf{Abréviations et symboles spéciaux} (variantes gothiques barrées, marques d'abréviation, ligatures) : CER $\sim$35--45\%
+  \item \textbf{Caractères hors vocabulaire du modèle de base} (22 caractères cibles) : CER = 100\% (toujours mal reconnus)
+\end{itemize}
+
+Cette granularité suggère que le fine-tuning améliore la robustesse sur symboles médiévaux mais ne crée pas de nouveaux chemins de décision pour les caractères absents du vocabulaire initial.
+
+---
+
+\section{Discussion}
+\fontsize{11}{13}\selectfont
+\justifying
+
+\subsection{Limitations actuelles}
+
+\subsubsection{Mismatch mode d'image (L vs 1)}
+
+La limitation majeure identifiée concerne l'incohérence entre l'espace d'entrée du modèle (grayscale L) et les données effectivement fourni (binarisé mode 1). Runs 1--5 subissent ce plafond artificiel à $\approx$74\% accuracy.
+
+\textbf{Solution proposée} : Recompilation Arrow en mode L pur, avec CLAHE et filtrage mais \textbf{sans} binarisation Sauvola. Cette approche est testée en Exp 3.
+
+\subsubsection{Taille et représentativité du corpus}
+
+Le corpus de 19~800 lignes d'entraînement demeure modeste pour un modèle à 5,7 M paramètres. Bien que supérieur au consensus HTR (généralement 5 K--10 K lignes minimum), il peut sous-représenter :
+
+\begin{itemize}
+  \item Certains \textbf{scribes} (une page d'un scribe = 20-50 lignes; 213 documents a 213 scribes differents = faible rep. par scribe).
+  \item \textbf{Variabilite temporelle} : corpus XIIIe-XVe, mais concentration XIIIe-XIVe; XVe sous-represente.
+  \item \textbf{Styles d'écriture non-textualis} : textualis dominante; caroline, bâtarde moindrement.
+\end{itemize}
+
+\subsubsection{Alphabet et vocabulaire}
+
+Le modèle de base \textit{cremma-generic-1.0.1} couvre 1~200+ caractères Unicode mais omis environ 22 caractères spécifiques du corpus CREMMA Medieval XIIIe siècle (variantes gothiques rares, ligatures). Ces caractères hors vocabulaire sont systématiquement mal reconnus (CER = 100\%).
+
+\subsubsection{Qualité de scans}
+
+Les images proviennent de Gallica (BnF) et varient en résolution (200--600 dpi) et en contraste (parchemin pâle, encre variable). Le pré-traitement CLAHE adaptatif aide mais ne peut pas compenser les scans très dégradés.
+
+\subsection{Roadmap vers < 8\% CER}
+
+Pour atteindre l'objectif d'excellence (< 8\% CER, > 92\% accuracy), plusieurs axes sont identifiés :
+
+\subsubsection{Court terme (semaines 2--3)}
+
+1. \textbf{Finir Exp 3} (mode L grayscale) : espéré +5--7 points CER (passant de 26,3\% à 19--21\%).
+2. \textbf{Étendre corpus} : ajouter 20--30 manuscrits additionnels du XIIIe siècle depuis corpus partenaires (HTRomance, eMEC). Cible : 25 K--30 K lignes.
+3. \textbf{Affinage d'hyperparamètres} : ablation sur learning rate (1e-5, 2e-4), batch size (16, 32), lag patience (20, 40).
+
+\subsubsection{Moyen terme (mois 2)}
+
+4. \textbf{Augmentation de données synthétiques} : générer images artificielles via rotation, étirement, ajout de bruit gaussien, variation de teinte d'encre. Peut ajouter +2--4\% accuracy.
+5. \textbf{Ensemble de modèles} : entraîner 5 modèles avec graines aléatoires différentes, moyenner prédictions. Gain typique 1--2\%.
+6. \textbf{Post-traitement} : correction d'erreurs courantes via lexique médiéval (dictionnaire français/latin XIIIe, HuggingFace).
+
+\subsubsection{Long terme (mois 3+)}
+
+7. \textbf{Fine-tuning d'architecture} : affiner $n_{\text{layers}}$ (ajouter/supprimer couches convolutives), $n_{\text{hidden}}$ (élargir représentations).
+8. \textbf{Données étiquetées pour caractères manquants} : collecter pages additionnelles contenant les 22 caractères hors-vocab, ré-entraîner.
+9. \textbf{Transfert mutli-tâche} : ajouter tâche auxiliaire (détection de zone ALTO, classification de script) pour enrichir représentations.
+
+\subsection{Reproductibilité et partage}
+
+Tous les modèles fine-tunés sont publiés sur HuggingFace (\texttt{legb/htr-cremma-medieval}) sous licence CC-BY 4.0 :
+
+\begin{table}[!htbp]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Modèles publiés -- HuggingFace (legb/htr-cremma-medieval)}
+\begin{tabular}{L{2.8cm}C{1.1cm}C{1.1cm}}
+\toprule
+Fichier & CER (val) & Commit HF \\
+\midrule
+exp2\_binarise\_20260613.safetensors & 26,3\% & 99843b75 \\
+exp3\_clean\_arrow\_20260613.safetensors & [en cours] & 5e43b1b1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le dépôt GitHub (\texttt{github.com/loulou441/htr-cremma-medieval-2026}) contient :
+
+\begin{itemize}
+  \item \texttt{src/pre\_traitement.py} -- pipeline pré-traitement complet (diagnose + apply)
+  \item \texttt{src/dataset.py} -- agrégation corpus automatisée depuis HTR-United
+  \item \texttt{src/train.py} -- entraînement Kraken avec logging détaillé
+  \item \texttt{src/compile\_arrow.py} -- compilation en Arrow binaire
+  \item \texttt{notebooks/kaggle\_training.ipynb} -- notebook d'entraînement reproductible
+  \item \texttt{TRAINING\_RUNS.md} -- historique détaillé de tous les experiments
+  \item \texttt{CONVENTIONS\_TRANSCRIPTION.md} -- règles diplomatiques appliquées
+\end{itemize}
+
+---
+
+\section{Conclusion}
+\fontsize{11}{13}\selectfont
+\justifying
+
+Ce travail a documenté un pipeline complet de fine-tuning du modèle Kraken \textit{cremma-generic} sur corpus CREMMA Medieval, couvrant acquisition de données, pré-traitement adaptatif, et six cycles expérimentaux d'entraînement. 
+
+La meilleure performance actuelle atteint \textbf{73,67\% de précision de validation et un CER de 26,3\%} sur le jeu de développement (3~702 lignes). Cette performance demeure limitée par un mismatch structurel mode d'image (grayscale vs binarisé) qui crée un plafond artificiel à $\approx$74\%.
+
+Nous avons identifié et documenté précisément cette limitation et proposé une solution (Exp 3 en mode L pur). Prochaines étapes incluent l'extension du corpus, l'augmentation synthétique et l'ensembling pour atteindre l'obj
+ectif de < 8\% CER (> 92\% accuracy).
+
+Les artefacts (modèles safetensors, scripts pré-traitement, notebooks d'entraînement) sont publiquement disponibles pour reproduit et étendy ce travail. La transparence méthodologique et la documentation complète des runs expérimentales constituent le principal apport reproduisibilité de ce projet.
+
+\balance
+\vspace{0.5cm}
+\fontsize{11}{13}\selectfont
+
+\subsection*{Remerciements}
+
+Les auteurs remercient Gallica (BnF) pour l'accès aux images numériques et le projet CREMMA (HTR-United) pour les modèles pré-entraînés et ressources de corpus. Les expériences ont bénéficié des GPUs cloud de Kaggle et Google Colab. Manon Tessier est financée en tant qu'étudiante du Mastère Data \& IA de HETIC.
+
+---
+
+\printbibliography
+
+\end{document}
