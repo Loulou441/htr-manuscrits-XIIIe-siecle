@@ -47,6 +47,17 @@
 - **Licence** : CC-BY 4.0
 - **Usage** : modèle de base v1.0.1 — meilleure couverture alphabet médiéval
 
+## Modèles publiés
+
+### HuggingFace — legb/htr-cremma-medieval
+- **Dépôt** : [huggingface.co/legb/htr-cremma-medieval](https://huggingface.co/legb/htr-cremma-medieval)
+- **Licence** : CC-BY 4.0
+
+| Fichier | Expérience | CER (val) | Commit HF |
+|---------|-----------|:---------:|-----------|
+| `exp2_binarise_20260613.safetensors` | Exp 2 — données binarisées (mode 1) | 26.33% | `99843b75` |
+| `exp3_clean_arrow_20260613.safetensors` | Exp 3 — Arrow filtré grayscale (résultat en attente) | — | `5e43b1b1` |
+
 ## Infrastructure
 
 ### Amazon S3
