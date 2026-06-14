@@ -76,8 +76,8 @@ Dépôt public : [legb/htr-cremma-medieval](https://huggingface.co/legb/htr-crem
 ```bibtex
 @misc{htr-cremma-medieval-2026,
   title  = {HTR CREMMA Medieval 2026 — Fine-tuning Kraken sur manuscrits médiévaux},
-  author = {Ouazar, Djamal et al.},
+  author = {Ouazar, Djamal and Tessier, Manon and El Mortada, Hamza},
   year   = {2026},
-  url    = {https://github.com/legb78/htr-cremma-medieval-2026}
+  url    = {https://github.com/loulou441/htr-cremma-medieval-2026}
 }
 ```
