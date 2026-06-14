@@ -1,132 +1,222 @@
-# HTR — Manuscrits du XIIIe siècle
+# HTR CREMMA Medieval 2026 — Fine-tuning Kraken
 
-Projet d'entraînement d'un modèle de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** spécialisé sur les manuscrits du XIIIe siècle en latin et ancien français, via la plateforme **eScriptorium / Kraken**.
+Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur le corpus CREMMA Medieval (ancien français + latin, XIIIe–XVe siècle). Fine-tuning du modèle `cremma-generic` avec Kraken 7.x sur GPU cloud (Kaggle / Colab).
+
+**Meilleur CER obtenu à ce jour : 26.3% (Run 4 — Kaggle T4)**  
+**Objectif : CER < 15% (validation) → CER < 8% (excellence)**  
+**Modèles publiés : [legb/htr-cremma-medieval](https://huggingface.co/legb/htr-cremma-medieval)**
 
 ---
 
 ## Sommaire
 
 1. [Contexte et objectifs](#1-contexte-et-objectifs)
-2. [Dataset](#2-dataset)
-3. [Prérequis](#3-prérequis)
-4. [Installation](#4-installation)
-5. [Démarrage rapide](#5-démarrage-rapide)
-6. [Étape 1 — Compilation du dataset](#6-étape-1--compilation-du-dataset)
-7. [Étape 2 — Prétraitement des images](#7-étape-2--prétraitement-des-images)
-8. [Structure du projet](#8-structure-du-projet)
-9. [Conventions de transcription](#9-conventions-de-transcription)
-10. [Références](#10-références)
+2. [Méthodologie](#2-méthodologie)
+3. [Résultats des expériences](#3-résultats-des-expériences)
+4. [Pipeline](#4-pipeline)
+5. [Structure du projet](#5-structure-du-projet)
+6. [Installation](#6-installation)
+7. [Utilisation](#7-utilisation)
+8. [Infrastructure cloud](#8-infrastructure-cloud)
+9. [Références](#9-références)
 
 ---
 
 ## 1. Contexte et objectifs
 
-Les modèles HTR génériques existants (CREMMA Bicerin, Cortado) atteignent 95–95,5 % de précision sur leurs corpus de validation, mais présentent deux limitations majeures pour une utilisation ciblée sur le XIIIe siècle :
+Les modèles HTR génériques CREMMA atteignent ~95% de précision sur leurs corpus de validation, mais leur utilisation pour de la transcription fine de manuscrits médiévaux requiert un **fine-tuning spécialisé**.
 
-- **Monolinguisme** : CREMMA Medieval est intégralement en ancien français — aucune couverture du latin médiéval.
-- **Déséquilibre temporel** : les données XIIIe ne représentent que 57 % du corpus CREMMA, dilué sur trois siècles.
+Ce projet part du modèle `cremma-generic-1.0.1` (Zenodo 7631619) et tente de l'améliorer par fine-tuning sur l'intégralité du corpus CREMMA Medieval (213 documents ALTO, ~19 800 lignes de texte courant).
 
-Ce projet construit un dataset XIIIe-strict en latin et ancien français, entraîne un modèle fine-tuné depuis le CREMMA Generic, et vise un **CER < 5 %** (objectif cible : CER < 3 %).
+### Métriques cibles
+
+| Niveau | CER | val_accuracy |
+|--------|:---:|:------------:|
+| Baseline actuelle | 26.3% | 73.7% |
+| Objectif validation | < 15% | > 85% |
+| Objectif excellence | < 8% | > 92% |
 
 ---
 
-## 2. Dataset
+## 2. Méthodologie
 
 ### Vue d'ensemble
 
-Le dataset agrège des sources provenant de **4 corpus HTR-United**, tous en format **ALTO XML** et suivant la **convention graphématique CREMMA** (abréviations conservées, u/v non distingués).
+```
+Corpus CREMMA Medieval (ALTO XML + JPEG)
+    │
+    ├─ pre_traitement.py ──── Deskew + CLAHE + filtres → mode L (grayscale)
+    │
+    ├─ ketos compile ─────── Arrow binaire (train.arrow / dev.arrow)
+    │
+    ├─ compile_arrow.py ──── Arrow filtré sans zones bruit (train_clean.arrow)
+    │
+    └─ ketos train ───────── Fine-tuning depuis cremma-generic-1.0.1
+```
 
-| Indicateur | Valeur |
-|---|---|
-| Lignes totales (brut) | ~25 000 |
-| Manuscrits | 38 |
-| Période | XIIIe siècle strict |
-| Langues | Ancien français + Latin |
-| Format | ALTO XML |
-| Licence | CC-BY 4.0 |
+### Prétraitement des images (`pre_traitement.py`)
 
-### Répartition par corpus
+Pipeline de 4 étapes, chacune précédée d'un diagnostic automatique :
 
-| Corpus | Langue | Manuscrits | Lignes |
-|---|---|---|---|
-| CREMMA-Medieval | Ancien français | 8 | ~12 885 |
-| HTRomance Medieval FR | Ancien français | 15 | ~7 107 |
-| CIHAM Fabliaux | Ancien français | 3 | ~450 |
-| CREMMA-Medieval-LAT | Latin | 4 | ~1 712 |
-| HTRomance Medieval LAT | Latin | 8 | ~2 806 |
+1. **Deskew** — correction d'inclinaison (FFT / projection / Hough), seuil 0.3°–10°
+2. **CLAHE** — amélioration du contraste local (clipLimit=2.0, tileGrid=8×8)
+3. **Filtre médian** — bruit sel-et-poivre (ksize=3 pour préserver les déliés gothiques)
+4. **Filtre gaussien** — bruit de fond uniforme (sigma=0.8–1.2)
 
-### Liste complète des manuscrits
+Sortie : images en **mode L (grayscale 8-bit)** — critique pour la compatibilité avec `cremma-generic` entraîné en mode L.
 
-| Cote | Langue | Script | Lignes | Corpus |
-|---|---|---|---|---|
-| BnF fr. 412 | Ancien français | Gothic Textualis | 6 324 | CREMMA-Medieval |
-| Arsenal 3516 | Ancien français | Gothic Textualis | 1 991 | CREMMA-Medieval |
-| Cologny, Bodmer 168 | Ancien français | Gothic Textualis | 1 976 | CREMMA-Medieval |
-| BnF fr. 24428 | Ancien français | Gothic Textualis | 1 328 | CREMMA-Medieval |
-| BnF fr. 25516 | Ancien français | Gothic Textualis | 717 | CREMMA-Medieval |
-| BnF fr. 844 | Ancien français | Gothic Textualis | 224 | CREMMA-Medieval |
-| BnF fr. 17229 | Ancien français | Gothic Textualis | 164 | CREMMA-Medieval |
-| BnF fr. 13496 | Ancien français | Gothic Textualis | 161 | CREMMA-Medieval |
-| BnF NAF 23686 | Ancien français | Gothic Textualis | 424 | HTRomance Medieval FR |
-| BnF fr. 1443 | Ancien français | Gothic Textualis | 418 | HTRomance Medieval FR |
-| BnF fr. 1553 | Ancien français | Gothic Textualis | 506 | HTRomance Medieval FR |
-| BnF fr. 1635 | Ancien français | Gothic Textualis | 217 | HTRomance Medieval FR |
-| BnF fr. 12581 | Ancien français | Gothic Textualis | 306 | HTRomance Medieval FR |
-| BnF fr. 1669 | Ancien français | Gothic Textualis | 484 | HTRomance Medieval FR |
-| BnF fr. 104 | Ancien français | Gothic Textualis | 404 | HTRomance Medieval FR |
-| BnF fr. 2168 | Ancien français | Gothic Textualis | 370 | HTRomance Medieval FR |
-| BnF fr. 1450 | Ancien français | Gothic Textualis | 711 | HTRomance Medieval FR |
-| BnF fr. 23117 | Ancien français | Gothic Textualis | 736 | HTRomance Medieval FR |
-| BnF fr. 6447 | Ancien français | Gothic Textualis | 383 | HTRomance Medieval FR |
-| BnF fr. 2173 | Ancien français | Gothic Textualis | 240 | HTRomance Medieval FR |
-| BnF fr. 19152 | Ancien français | Gothic Textualis | 529 | HTRomance Medieval FR |
-| BnF fr. 12603 | Ancien français | Gothic Textualis | 442 | HTRomance Medieval FR |
-| BnF fr. 837 | Ancien français | Gothic Textualis | 150 | CIHAM Fabliaux |
-| BnF fr. 1593 | Ancien français | Gothic Textualis | 150 | CIHAM Fabliaux |
-| Mazarine 1553 | Ancien français | Gothic Textualis | 150 | CIHAM Fabliaux |
-| CLM 13027 | Latin | S. Textualis Libraria | 616 | CREMMA-Medieval-LAT |
-| MsWettF 15 | Latin | Textualis Libraria | 455 | CREMMA-Medieval-LAT |
-| BnF lat. 16195 | Latin | Semitextualis Currens | 449 | CREMMA-Medieval-LAT |
-| CCCC MSS 236 | Latin | Textualis Libraria | 192 | CREMMA-Medieval-LAT |
-| BnF lat. 8001 | Latin | Gothic Textualis | 506 | HTRomance Medieval LAT |
-| BnF lat. 16085 | Latin | Gothic Textualis | 392 | HTRomance Medieval LAT |
-| BnF lat. 17903 | Latin | Gothic Textualis | 440 | HTRomance Medieval LAT |
-| BnF lat. 14354 | Latin | Gothic Textualis | 546 | HTRomance Medieval LAT |
-| BnF lat. 16204 | Latin | Gothic Textualis | 462 | HTRomance Medieval LAT |
-| BnF lat. 16657 | Latin | Gothic Textualis | 199 | HTRomance Medieval LAT |
-| BnF lat. 5657 | Latin | Textualis Currens | 152 | HTRomance Medieval LAT |
-| BnF lat. 10996 | Latin | Textualis Currens | 109 | HTRomance Medieval LAT |
+### Compilation Arrow (`compile_arrow.py`)
 
-### Rééquilibrage 60/40 (optionnel)
+Deux stratégies de compilation :
 
-Le dataset brut est déséquilibré (~80 % AF / ~20 % LAT). L'option `--balance` dans `dataset.py` applique un plafonnement par manuscrit pour atteindre **60 % ancien français / 40 % latin**, soit ~14 700 lignes.
+| Arrow | Contenu | Lignes | Taille |
+|-------|---------|:------:|:------:|
+| `train.arrow` | Toutes zones ALTO | ~19 800 | 939 MB |
+| `train_clean.arrow` | Zones MainZone + MarginTextZone uniquement | 18 769 | 914 MB |
 
----
+`train_clean.arrow` exclut les `MusicZone`, `DropCapitalZone`, `InterlinearLine` — zones parasites représentant ~4.4% des lignes du corpus.
 
-## 3. Prérequis
-
-- **Python** ≥ 3.10
-- **Git** (pour le clonage des dépôts HTR-United)
-- **OpenCV** ≥ 4.5 (`opencv-python`)
-- **NumPy** ≥ 1.23
-- **Kraken** ≥ 4.3 (pour l'entraînement HTR)
-- RAM : 8 Go minimum (16 Go recommandé pour le prétraitement en batch)
-
----
-
-## 4. Installation
+### Fine-tuning Kraken
 
 ```bash
-# 1. Cloner ce dépôt
-git clone https://github.com/votre-org/htr-xiii.git
-cd htr-xiii
+ketos train \
+  -f binary \
+  -i cremma-generic-1.0.1.mlmodel \
+  --resize union \
+  --augment \
+  --lag 10 \
+  --precision 16-mixed \
+  -b 8 \
+  --workers 4 \
+  -t train.arrow -e dev.arrow
+```
 
-# 2. Créer un environnement virtuel
-python -m venv .venv
-source .venv/bin/activate        # Linux/macOS
-# .venv\Scripts\activate         # Windows
+---
 
-# 3. Installer les dépendances
+## 3. Résultats des expériences
+
+### Tableau de bord
+
+| Run | Date | Plateforme | Données | Modèle base | CER | Stages | Statut |
+|-----|------|-----------|---------|-------------|:---:|:------:|--------|
+| 1 | 11 juin | Local Windows | binarisé mode 1 | cremma-medieval_best | ~30% | — | Bloqué (workers Windows) |
+| 2 | 12 juin | Kaggle T4 x2 | binarisé mode 1 | cremma_generic | ~27% | — | Logs partiels |
+| 3 | 13 juin | Colab A100 | binarisé mode 1 | cremma-generic-1.0.1 | 28.1% | 24 | Stagnation stage 12 |
+| **4** | **13 juin** | **Kaggle T4 x2** | **binarisé mode 1** | **cremma_generic** | **26.3%** | **37** | **Meilleur run** |
+| 5 | 14 juin | Kaggle T4 x2 | binarisé mode 1 | cremma-generic-1.0.1 | 26.3% | 37 | Identique Run 4 |
+| 6 | 14 juin | Colab T4 | binarisé mode 1 | cremma_generic | ~26.5% | 14 | Aborté — mismatch confirmé |
+
+### Diagnostic : le plafond à ~74%
+
+Toutes les runs 1–6 utilisent des données **binarisées (mode 1)** alors que `cremma-generic` a été entraîné sur des images **grayscale (mode L)**. Ce mismatch crée un plafond artificiel à ~74% de `val_accuracy`.
+
+Preuves :
+- `WARNING training set contains mode 1 data` présent dès la Run 2
+- Changer de modèle de base (Run 5 vs Run 4) ne change rien — même CER, même stage 27
+- `train.arrow` sur S3 s'avère binarisé malgré la vérification initiale
+
+### Expériences en cours / planifiées
+
+| # | Hypothèse | Impact estimé | Statut |
+|---|-----------|:-------------:|--------|
+| Exp 3 | Arrow filtré grayscale (`train_clean.arrow`) | **majeur** (+10–15 pts CER) | Données prêtes |
+| Exp 4 | TrOCR vs Kraken (LoRA) | comparaison | Planifiée |
+
+### Modèles publiés (HuggingFace)
+
+[legb/htr-cremma-medieval](https://huggingface.co/legb/htr-cremma-medieval) — licence CC-BY 4.0
+
+| Fichier | Expérience | CER |
+|---------|-----------|:---:|
+| `exp2_binarise_20260613.safetensors` | Baseline binarisée (Run 4/5) | 26.3% |
+| `exp3_clean_arrow_20260613.safetensors` | Arrow filtré grayscale | en cours |
+
+---
+
+## 4. Pipeline
+
+### Étape 1 — Prétraitement
+
+```bash
+python src/pre_traitement.py data/repos/ --output data/preprocessed_grayscale/
+```
+
+### Étape 2 — Compilation Arrow filtrée
+
+```bash
+python src/compile_arrow.py \
+  --splits data/splits/train.txt data/splits/dev.txt \
+  --output data/splits/arrow_clean/
+```
+
+### Étape 3 — Entraînement (Kaggle / Colab)
+
+Utiliser les notebooks dans `notebooks/` :
+
+| Notebook | Plateforme | Expérience |
+|----------|-----------|-----------|
+| `notebooks/kaggle_exp3_clean_arrow.ipynb` | Kaggle T4 x2 | Exp 3 — Arrow filtré |
+| `notebooks/colab_exp3_clean_arrow.ipynb` | Colab A100 / T4 | Exp 3 — Arrow filtré |
+| `notebooks/colab_exp2_grayscale.ipynb` | Colab T4 | Exp 2 — Arrow S3 brut (aborté) |
+
+Les notebooks téléchargent les données depuis S3 via **AWS Secrets** (Kaggle Secrets / Colab Secrets — jamais de credentials hardcodés).
+
+---
+
+## 5. Structure du projet
+
+```
+htr-cremma-medieval-2026/
+│
+├── src/
+│   ├── pre_traitement.py        ← Pipeline prétraitement images (deskew, CLAHE, filtres)
+│   ├── compile_arrow.py         ← Compilation Arrow filtré (sans zones bruit)
+│   ├── train.py                 ← Script entraînement local (référence)
+│   └── aws_sagemaker_launch.py  ← Orchestrateur SageMaker (optionnel)
+│
+├── notebooks/
+│   ├── kaggle_exp3_clean_arrow.ipynb   ← Exp 3 — Kaggle T4
+│   ├── colab_exp3_clean_arrow.ipynb    ← Exp 3 — Colab
+│   └── colab_exp2_grayscale.ipynb      ← Exp 2 — aborté
+│
+├── experiments/
+│   ├── EXPERIMENT_LOG.md        ← Journal des hypothèses et décisions
+│   └── journal.jsonl            ← Logs structurés machine-readable (une ligne par run)
+│
+├── tests/
+│   └── test_pretraitement.py    ← Tests non-régression pipeline image
+│
+├── data/
+│   ├── splits/                  ← Fichiers .txt (train/dev/test) + Arrow compilés
+│   └── repos/                   ← Clones des corpus HTR-United (gitignore)
+│
+├── models/                      ← Modèles téléchargés localement (gitignore)
+│
+├── docs/
+│   └── SAGEMAKER_ARCHITECTURE.md
+│
+├── README.md
+├── MODEL_CARD.md                ← Fiche modèle officielle
+├── TRAINING_RUNS.md             ← Historique détaillé des runs
+├── DATA_SOURCES.md              ← Sources corpus + SHA-256 + liens HuggingFace
+├── CONVENTIONS_TRANSCRIPTION.md ← Règles de transcription CREMMA
+└── requirements.txt
+```
+
+---
+
+## 6. Installation
+
+```bash
+git clone https://github.com/legb78/htr-cremma-medieval-2026.git
+cd htr-cremma-medieval-2026
+
+python -m venv cremma
+# Windows
+cremma\Scripts\activate
+# Linux/macOS
+source cremma/bin/activate
+
 pip install -r requirements.txt
 ```
 
@@ -136,234 +226,114 @@ pip install -r requirements.txt
 numpy>=1.23
 opencv-python>=4.5
 kraken>=4.3
-jdeskew>=0.10        # deskewing alternatif (optionnel)
-lxml>=4.9            # lecture des fichiers ALTO XML
-tqdm>=4.64           # barres de progression
+lxml>=4.9
+tqdm>=4.64
+torch>=2.4.0
+boto3>=1.26
+sagemaker>=2.0
+huggingface_hub>=0.23
 ```
 
 ---
 
-## 5. Démarrage rapide
+## 7. Utilisation
+
+### Lancer les tests
 
 ```bash
-# Étape 1 — Télécharger le dataset complet (~25 000 lignes)
-python dataset.py --output ./data/dataset
-
-# Étape 1 (variante) — Dataset rééquilibré 60/40 (~14 700 lignes)
-python dataset.py --output ./data/dataset --balance
-
-# Étape 2 — Prétraiter les images
-python pre_traitement.py ./data/dataset --output ./data/preprocessed
-
-# Vérifier le résultat sur une image unique avant de traiter tout le corpus
-python pre_traitement.py ./data/dataset/fro/BnF_fr_412/page001.jpg \
-    --diagnose-only --verbose
+pytest tests/
 ```
 
----
-
-## 6. Étape 1 — Compilation du dataset
-
-### Script : `dataset.py`
-
-Le script `dataset.py` télécharge automatiquement les ALTO XML et images depuis
-les 4 dépôts GitHub HTR-United, puis les organise dans le dossier de sortie.
-
-```
-data/dataset/
-├── fro/                          ← Ancien français
-│   ├── BnF_fr_412/
-│   │   ├── page001.xml           ← ALTO XML
-│   │   ├── page001.jpg           ← image associée
-│   │   └── ...
-│   └── ...
-├── lat/                          ← Latin
-│   ├── CLM_13027/
-│   └── ...
-└── manifest.json                 ← Inventaire du dataset
-```
-
-### Options disponibles
-
-| Option | Description | Défaut |
-|---|---|---|
-| `--output` | Dossier de destination | `./data/dataset` |
-| `--balance` | Active le rééquilibrage 60/40 | désactivé |
-| `--af-ratio` | Proportion cible AF (si --balance) | `0.60` |
-| `--repos-dir` | Cache des clones Git | `<output>/../repos` |
-| `--dry-run` | Affiche le plan sans télécharger | désactivé |
-| `--seed` | Graine aléatoire (reproductibilité) | `42` |
-| `--verbose` | Messages DEBUG | désactivé |
-
-### Exemples
+### Compiler un Arrow filtré localement
 
 ```bash
-# Dataset complet (recommandé pour un premier entraînement)
-python dataset.py --output ./data/dataset
-
-# Dataset équilibré 60/40 (recommandé pour production)
-python dataset.py --output ./data/dataset_balanced --balance
-
-# Vérifier le plan sans rien télécharger
-python dataset.py --dry-run --balance
-
-# Personnaliser le ratio (55/45)
-python dataset.py --balance --af-ratio 0.55 --output ./data/dataset_55_45
+python src/compile_arrow.py \
+  --splits data/splits/train.txt data/splits/dev.txt \
+  --output data/splits/arrow_clean/ \
+  --upload  # optionnel — upload sur S3
 ```
 
----
+### Vérifier le mode d'un Arrow
 
-## 7. Étape 2 — Prétraitement des images
+```python
+from kraken.lib import train
+import pyarrow as pa
 
----
-
-## 7. Étape 2 — Prétraitement des images
-
-### Script : `pre_traitement.py`
-
-Le pipeline de prétraitement est conforme au cours 4.1 « Prétraitement de scans de manuscrits ». Il applique quatre corrections dans l'ordre suivant, chacune précédée d'un **diagnostic automatique**. 
-
-*Note : Afin de fiabiliser les calculs d'angles sur les manuscrits médiévaux, le diagnostic d'inclinaison s'effectue automatiquement sur une région nettoyée via une binarisation locale adaptative restreinte aux 60 % centraux du scan (évitant les bruits géométriques de bord de page ou de reliure).*
-
-```
-Image brute
-    │
-    ├─ 1. DESKEWING ─────────────────── Correction de l'inclinaison
-    │       Diagnostic : angle d'inclinaison
-    │       Méthode    : FFT (défaut) | Profils de projection | Hough
-    │       Seuils     : < 0.3° → skip | ≤ 10° → corriger | > 10° → manuel
-    │
-    ├─ 2. CLAHE ─────────────────────── Amélioration du contraste local
-    │       Diagnostic : uniformité du fond (σ_fond / 255)
-    │       Seuils     : < 0.4 → nécessaire | 0.4–0.7 → léger | > 0.7 → skip
-    │
-    ├─ 3a. FILTRE MÉDIAN ─────────────── Bruit sel-et-poivre
-    │       Diagnostic : fraction de pixels extrêmes (< 2 ou > 253)
-    │       Seuils     : < 0.1% → skip | ≤ 1% → ksize=3 | > 1% → ksize=5
-    │
-    └─ 3b. FILTRE GAUSSIEN ──────────── Bruit de fond (grain uniforme)
-            Diagnostic : σ_fond (écart-type zone claire)
-            Seuils     : < 5 → skip | ≤ 15 → sigma=0.8 | > 15 → sigma=1.2
+reader = pa.ipc.open_file("data/splits/arrow_clean/train_clean.arrow")
+sample = reader.get_batch(0)
+# Doit afficher mode L, pas mode 1
 ```
 
-### Options disponibles
-
-| Option | Description | Défaut |
-|---|---|---|
-| `--output` | Image ou dossier de sortie | `<input>_preprocessed` |
-| `--methode-deskew` | `projection` \| `hough` \| `fft` | `projection` |
-| `--no-auto-methode` | Désactive la sélection de méthode par style paléographique | sélection automatique activée |
-| `--diagnose-only` | Diagnostic sans modification | désactivé |
-| `--force-all` | Forcer toutes les corrections | désactivé |
-| `--verbose` | Messages détaillés + rapports | désactivé |
-
-### Exemples
+### Uploader un modèle sur HuggingFace
 
 ```bash
-# Traiter tout le dataset avec les paramètres automatiques (recommandé)
-# Par défaut, le script consulte manifest.json et choisit la meilleure méthode (ex: projection pour la Textualis)
-python pre_traitement.py ./data/dataset --output ./data/preprocessed
-
-# Désactiver l'aiguillage automatique pour appliquer une méthode fixe sur tout le lot
-python pre_traitement.py ./data/dataset --output ./data/preprocessed \
-    --no-auto-methode --methode-deskew hough
-
-# Diagnostic sans modification (inspecter les décisions avant de lancer)
-python pre_traitement.py ./data/dataset --diagnose-only --verbose
-
-# Forcer toutes les corrections (utile si les diagnostics sont trop conservateurs)
-python pre_traitement.py ./data/dataset --output ./data/preprocessed --force-all
-
-# Tester sur une seule image avant de traiter tout le corpus
-python pre_traitement.py ./data/dataset/fro/BnF_fr_412/page001.jpg \
-    --output /tmp/test_preproc.jpg --verbose
-```
-
-### Précautions spécifiques aux manuscrits médiévaux
-
-**Filtre médian** : les déliés gothiques et points diacritiques mesurent 1–3 pixels.
-Toujours utiliser `ksize=3` par défaut. `ksize=5` peut effacer les signes diacritiques.
-Vérifier visuellement sur une zone d'écriture dense avant de traiter en batch.
-
-**Filtre gaussien** : ne jamais appliquer après binarisation.
-S'applique uniquement sur l'image en niveaux de gris, avant toute binarisation.
-
-**CLAHE** : les encres colorées médiévales (cinabre, azurite, or) peuvent réagir
-différemment à l'égalisation de contraste. En cas de rubriques rouges importantes,
-vérifier que le CLAHE ne sature pas ces zones.
-
-**Deskewing** : la méthode FFT est la plus robuste pour les manuscrits bruités,
-mais elle échoue sur les courbures de reliure (déformation non uniforme).
-Dans ce cas, préférer `--methode-deskew projection` ou corriger manuellement.
-
----
-
-## 8. Structure du projet
-
-```
-htr-xiii/
-├── dataset.py              ← Téléchargement et compilation du dataset
-├── pre_traitement.py       ← Pipeline de prétraitement des images
-├── README.md               ← Ce fichier
-├── requirements.txt        ← Dépendances Python
-│
-├── data/
-│   ├── dataset/            ← Dataset brut compilé (gitignore)
-│   │   ├── fro/            ← Ancien français
-│   │   ├── lat/            ← Latin
-│   │   └── manifest.json
-│   ├── preprocessed/       ← Images prétraitées (gitignore)
-│   └── repos/              ← Cache des clones GitHub (gitignore)
-│
-└── models/                 ← Modèles entraînés (gitignore)
+hf auth login
+hf upload legb/htr-cremma-medieval models/mon_modele.safetensors mon_modele.safetensors
 ```
 
 ---
 
-## 9. Conventions de transcription
+## 8. Infrastructure cloud
 
-Toutes les sources du dataset suivent la **convention graphématique CREMMA**
-(Pinche 2022, disponible sur HAL) :
+### Amazon S3 (privé)
 
-- **Abréviations conservées** : les abréviations sont transcrites avec leurs signes
-  tels qu'ils apparaissent dans le manuscrit (pas de développement).
-- **u/v non distingués** : `u` et `v` sont normalisés selon l'usage du scribe,
-  sans distinction systématique.
-- **i/j non distingués** : même principe que u/v.
-- **Segmentation SegmOnto** : les zones et lignes sont annotées selon le
-  vocabulaire SegmOnto (MainZone, MarginTextZone, DropCapitalZone…).
-- **Format** : ALTO XML v4, compatible eScriptorium et Kraken.
+```
+s3://htr-cremma-medieval/
+├── base-model/
+│   ├── cremma_generic.mlmodel           (21.8 MB — Zenodo 7234166)
+│   └── cremma-generic-1.0.1.mlmodel    (21.7 MB — Zenodo 7631619)
+├── splits/
+│   ├── train.arrow                      (939 MB — binarisé mode 1)
+│   ├── dev.arrow                        (144 MB — binarisé mode 1)
+│   ├── train_clean.arrow                (914 MB — grayscale mode L filtré)
+│   └── dev_clean.arrow                  (144 MB — grayscale mode L filtré)
+└── output/
+    └── (modèles fine-tunés)
+```
 
-Ces conventions garantissent la compatibilité directe entre les 4 corpus sources
-et permettent un entraînement Kraken sans conversion préalable.
+### Credentials AWS
+
+Les credentials AWS ne doivent **jamais** être hardcodés. Utiliser :
+- **Kaggle** : `UserSecretsClient()` (Kaggle Secrets)
+- **Colab** : `userdata.get('AWS_ACCESS_KEY_ID')` (Colab Secrets)
+
+### Plateformes GPU utilisées
+
+| Plateforme | GPU | Batch | Precision | Durée/run |
+|-----------|-----|:-----:|:---------:|:---------:|
+| Kaggle T4 x2 | 2× T4 16 GB | 8 | 16-mixed | ~2h30 |
+| Colab A100 | A100 40 GB | 16 | bf16-mixed | ~5h30 |
+| Colab T4 | T4 16 GB | 8 | 16-mixed | ~3h |
 
 ---
 
-## 10. Références
+## 9. Références
 
-### Dataset et corpus
+### Corpus et données
 
-- **CREMMA-Medieval** — HTR-United, ENC/PSL. <https://github.com/HTR-United/cremma-medieval>
+- **CREMMA-Medieval** — HTR-United / ENC-PSL. <https://github.com/HTR-United/cremma-medieval>
 - **CREMMA-Medieval-LAT** — HTR-United. <https://github.com/HTR-United/CREMMA-Medieval-LAT>
-- **HTRomance Medieval French** — HTRomance Project. <https://github.com/HTRomance-Project/medieval-french>
-- **HTRomance Medieval Latin** — HTRomance Project. <https://github.com/HTRomance-Project/medieval-latin>
+- **HTRomance Medieval French** — <https://github.com/HTRomance-Project/medieval-french>
+- **HTRomance Medieval Latin** — <https://github.com/HTRomance-Project/medieval-latin>
 
-### Modèles de référence
+### Modèles de base
 
-- **Bicerin / Cortado** — Pinche, A. (2022). *CREMMA Medieval models*. Zenodo. DOI: 10.5281/zenodo.6669553
-- **CREMMA Generic** — Zenodo. DOI: 10.5281/zenodo.7234166
-- **TRIDIS v2** — Zenodo. DOI: 10.5281/zenodo.13862096
+- **cremma_generic** — Pinche, A. (2022). Zenodo. DOI: [10.5281/zenodo.7234166](https://doi.org/10.5281/zenodo.7234166)
+- **cremma-generic-1.0.1** — Zenodo. DOI: [10.5281/zenodo.7631619](https://doi.org/10.5281/zenodo.7631619)
 
-### Prétraitement
+### Framework
 
-- **Sauvola & Pietikäinen** (2000). *Adaptive Document Image Binarization*. Pattern Recognition, 33(2), 225–236.
-- **Otsu, N.** (1979). *A Threshold Selection Method from Gray-Level Histograms*. IEEE Trans. SMC, 9(1), 62–66.
-- **Pizer et al.** (1987). *Adaptive Histogram Equalization and Its Variations*. CVGIP, 39(3), 355–368.
-- **Zuiderveld, K.** (1994). *Contrast Limited Adaptive Histogram Equalization*. Graphics Gems IV.
-- **Ma et al.** (2018). *DocUNet: Document Image Unwarping via a Stacked U-Net*. CVPR 2018.
-
-### Conventions et annotation
-
-- **Pinche, A.** (2022). *Guide de transcription pour les manuscrits du Xe au XVe siècle*. HAL.
+- **Kraken** — Kiessling, B. (2019). *Kraken — an Universal Text Recognizer for the Humanities*. DH2019. <https://github.com/mittagessen/kraken>
 - **SegmOnto** — <https://segmonto.github.io>
-- **HTR-United catalogue** — <https://htr-united.github.io/catalog.html>
+- **Pinche, A.** (2022). *Guide de transcription pour les manuscrits du Xe au XVe siècle*. HAL.
+
+### Citation
+
+```bibtex
+@misc{htr-cremma-medieval-2026,
+  title  = {HTR CREMMA Medieval 2026 — Fine-tuning Kraken sur manuscrits médiévaux},
+  author = {Ouazar, Djamal},
+  year   = {2026},
+  url    = {https://github.com/legb78/htr-cremma-medieval-2026}
+}
+```
