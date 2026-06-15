@@ -56,7 +56,7 @@ def get_htr_model(filename: str):
 
 
 st.set_page_config(page_title="HTR CREMMA Medieval", layout="centered")
-st.title("HTR CREMMA Medieval 2026")
+st.title("HTR Manuscrit XIIIe siècle")
 st.caption("Fine-tuning Kraken — Ouazar, Tessier, El Mortada")
 
 # --- Sidebar ---
@@ -91,7 +91,7 @@ st.sidebar.markdown(f"""
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     f"[HuggingFace](https://huggingface.co/{HF_REPO}) · "
-    f"[GitHub](https://github.com/loulou441/htr-cremma-medieval-2026)"
+    f"[GitHub](https://github.com/Loulou441/htr-manuscrits-XIIIe-siecle)"
 )
 
 # --- Main ---
@@ -177,8 +177,8 @@ if uploaded:
 st.markdown("---")
 col1, col2 = st.columns(2)
 col1.markdown("""
-**Corpus** : CREMMA Medieval (HTR-United)
-**Période** : XIIIe–XVe siècle
+**Corpus** : Manuscrits XIIIe siècle (HTR-United)
+**Période** : XIIIe siècle
 **Langues** : Ancien français + Latin
 **Objectif CER** : < 15% (validation) / < 8% (excellence)
 """)
