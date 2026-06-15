@@ -1,4 +1,5 @@
 import sys
+import dataclasses
 from pathlib import Path
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -134,6 +135,30 @@ if uploaded:
                 all_conf = [c for p in preds for c in (p.confidences or [])]
                 avg_conf = sum(all_conf) / len(all_conf) if all_conf else 0.0
 
+                # Sérialisation ALTO XML (texte + coordonnées des lignes).
+                # Les ocr_record renvoyés par rpred sont des sous-classes de
+                # BaselineLine : ils portent à la fois la géométrie (id,
+                # boundary, baseline) et la reconnaissance (prediction, cuts,
+                # confidences). On peut donc les passer tels quels comme `lines`
+                # d'une Segmentation et laisser kraken produire l'ALTO (même
+                # format que la vérité terrain du dataset).
+                alto_xml = None
+                try:
+                    from kraken import serialization
+
+                    seg_texte = dataclasses.replace(
+                        segmentation,
+                        imagename=uploaded.name,
+                        lines=preds,
+                    )
+                    alto_xml = serialization.serialize(
+                        seg_texte,
+                        image_size=image.size,
+                        template="alto",
+                    )
+                except Exception as exc:  # sérialisation non bloquante
+                    st.warning(f"Export ALTO indisponible : {exc}")
+
                 if lines_text:
                     st.success(f"{len(lines_text)} ligne(s) transcrite(s)")
 
@@ -158,11 +183,24 @@ if uploaded:
                                     f"**Ligne {i+1}** *(conf. {conf_line:.1%})* — `{p.prediction}`"
                                 )
 
-                    st.download_button(
-                        label="Télécharger la transcription (.txt)",
+                    dl_txt, dl_xml = st.columns(2)
+                    dl_txt.download_button(
+                        label="Télécharger (.txt)",
                         data="\n".join(lines_text),
                         file_name="transcription.txt",
                         mime="text/plain",
+                        use_container_width=True,
+                    )
+                    base_name = Path(uploaded.name).stem
+                    dl_xml.download_button(
+                        label="Télécharger (ALTO .xml)",
+                        data=alto_xml or "",
+                        file_name=f"{base_name}.xml",
+                        mime="application/xml",
+                        disabled=alto_xml is None,
+                        use_container_width=True,
+                        help="Texte + coordonnées des lignes, au format ALTO "
+                             "(même format que la vérité terrain).",
                     )
                 else:
                     st.warning("Lignes détectées mais aucun texte transcrit.")
