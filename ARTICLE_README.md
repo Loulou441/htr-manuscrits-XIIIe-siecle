@@ -129,4 +129,4 @@ latexmk -pdf article_htr_cremma.tex
 
 ---
 
-*Article généré pour HETIC Mastère Data & IA. Tous les résultats basés sur expériences réelles et données du projet HTR CREMMA Medieval 2026.*
+*Article généré pour HETIC Mastère Data & IA. Tous les résultats basés sur expériences réelles et données du projet HTR Manuscrits XIIe siècle.*

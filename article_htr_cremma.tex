@@ -13,6 +13,7 @@
 \usepackage{ragged2e}
 \usepackage{amssymb}
 \usepackage{parskip}
+\usepackage{appendix}
 \usepackage{amsmath}
 \usepackage{newtxtext}
 \usepackage{booktabs}
@@ -132,7 +133,7 @@
 \fontsize{10}{12}\selectfont
 \justifying
 \noindent
-La reconnaissance optique de caractères manuscrits (HTR) demeure un défi pour les documents patrimoniaux anciens. Ce travail présente un pipeline complet de fine-tuning du modèle Kraken \textit{cremma-generic} sur le corpus CREMMA Medieval, couvrant 21 manuscrits en ancien français et latin datant des XIIIe--XVe siècles. Nous décrivons (1) l'agrégation d'un dataset de 19~800 lignes d'entraînement à partir de quatre corpus HTR-United, (2) un prétraitement adaptatif comprenant deskewing, amélioration du contraste (CLAHE), et filtrage du bruit, et (3) l'entraînement en environnement cloud (Kaggle, Colab) avec validation sur un jeu de développement de ~3700 lignes. Notre meilleure configuration atteint une précision de validation de 73,67\% et un taux d'erreur de caractère (CER) de 26,3\%. Nous discutons des limitations actuelles (mismatch mode d'image, représentation de corpus) et présentons un roadmap vers 8\% CER. Les modèles sont publiés sous licence CC-BY sur HuggingFace (\texttt{legb/htr-cremma-medieval}).
+La reconnaissance optique de caractères manuscrits (HTR) demeure un défi pour les documents patrimoniaux anciens. Ce travail présente un pipeline complet de fine-tuning du modèle Kraken \textit{cremma-generic} sur le corpus CREMMA Medieval, couvrant 33 manuscrits en AF et Lat. datant du XIIIe siècle. Nous décrivons (1) l'agrégation d'un dataset de 23~575 lignes d'entraînement à partir de quatre corpus HTR-United, (2) un prétraitement adaptatif comprenant deskewing, amélioration du contraste (CLAHE), et filtrage du bruit, et (3) l'entraînement en environnement cloud (Kaggle, Colab) avec validation sur un jeu de développement de ~3700 lignes. Notre meilleure configuration atteint une précision de validation de 73,67\% et un taux d'erreur de caractère (CER) de 26,3\%. Nous discutons des limitations actuelles (mismatch mode d'image, représentation de corpus) et présentons un roadmap vers 8\% CER. Les modèles sont publiés sous licence CC-BY sur HuggingFace (\texttt{legb/htr-cremma-medieval}).
 
 \vspace{0.3cm}
 {\noindent\fontsize{10}{12}\selectfont\raggedright\textbf{Keywords:} Handwritten Text Recognition (HTR); Manuscript Digitization; Medieval French; Kraken; Deep Learning; Fine-tuning; CREMMA; Optical Character Recognition\par}
@@ -150,7 +151,7 @@ La numérisation et la reconnaissance automatique de textes manuscrits constitue
 
 Le projet CREMMA (\textit{Collaborative Research on Medieval Manuscripts Automated Recognition}) a produit depuis 2017 des modèles HTR génériques entraînés sur corpus multi-lingual et multi-siècles. Le modèle \textit{cremma-generic} atteint $\sim$95\% de précision sur ses propres données de validation, mais montre une généralisation limitée aux manuscrits en dehors de son corpus d'entraînement. Le fine-tuning spécialisé sur corpus cible permet de combler ce \textit{domain gap}.
 
-L'objectif de ce travail est triple : (1) construire un dataset d'entraînement complet agrégé depuis quatre corpus HTR-United couvrant ancien français et latin médiévaux, (2) mettre en place un pipeline de prétraitement adaptatif et reproductible, et (3) documenter intégralement un cycle d'expériences de fine-tuning pour atteindre un CER $<$ 8\% en validation.
+L'objectif de ce travail est triple : (1) construire un dataset d'entraînement complet agrégé depuis quatre corpus HTR-United couvrant AF et Lat. médiévaux, (2) mettre en place un pipeline de prétraitement adaptatif et reproductible, et (3) documenter intégralement un cycle d'expériences de fine-tuning pour atteindre un CER $<$ 8\% en validation.
 
 ---
 
@@ -163,13 +164,15 @@ L'objectif de ce travail est triple : (1) construire un dataset d'entraînement 
 Le dataset d'entraînement agrège 21 manuscrits provenant de quatre corpus HTR-United publics :
 
 \begin{itemize}
-  \item \textbf{CREMMA-Medieval} (11 documents français, XIIIe--XVe) : dépôt HTR-United officiel
-  \item \textbf{CREMMA-Medieval-LAT} (12 documents latins) : extension latine de CREMMA
-  \item \textbf{HTRomance Medieval FR} : corpus français du projet HTRomance
-  \item \textbf{HTRomance Medieval LAT} : corpus latin du projet HTRomance
+  \item \textbf{CREMMA-Medieval} (8 documents français, XIIIe) : dépôt HTR-United officiel
+  \item \textbf{CREMMA-Medieval-LAT} (4 documents Lat.s) : extension Lat.e de CREMMA
+  \item \textbf{HTRomance Medieval FR} (14 documents français): corpus français du projet HTRomance
+  \item \textbf{HTRomance Medieval LAT} (8 documents Lat.s) : corpus Lat. du projet HTRomance
 \end{itemize}
 
 Tous les documents sont originaires des collections de la Bibliothèque Nationale de France (BnF) et accessibles via la plateforme Gallica. Le corpus couvre plusieurs scripts : Textualis Gothique, Caroline médiévale, et bâtardes.
+
+Le tableau complet des manuscrits du corpus se situe en annexe A.
 
 \subsection{Statistiques globales}
 
@@ -185,9 +188,9 @@ Documents ALTO (entraînement) & 213 \\
 Documents ALTO (développement) & 32 \\
 Documents ALTO (test) & 3 \\
 Lignes totales (toutes zones) & 48~278 \\
-Lignes texte courant (filtré) & 18~769 \\
+Lignes texte courant (filtré) & 23~575 \\
 Langue dominante & AF \\
-Ratio langue secondaire (latin) & 35\% \\
+Ratio langue secondaire (Lat.) & 35\% \\
 Période couverte & XIIIe siècle \\
 Format images & JPG \\
 Licence & CC-BY 4.0 \\
@@ -230,7 +233,7 @@ Le split respecte l'intégrité des manuscrits (pas de mélange inter-manuscrit 
 \fontsize{10}{11}\selectfont
 \centering
 \caption{Split train/dev/test du corpus}
-\begin{tabular}{L{2.5cm}C{1.2cm}C{1.2cm}C{1.2cm}}
+\begin{tabular}{L{1cm}C{1.2cm}C{1.2cm}C{1.5cm}}
 \toprule
 Split & Fichiers & Lignes & Proportions \\
 \midrule
@@ -327,7 +330,7 @@ Deux modèles de base ont été testés :
   \item \textbf{cremma-generic-1.0.1.mlmodel} (Zenodo 7631619) : version 1.0.1, améliorée couverture alphabet médiéval
 \end{itemize}
 
-Justification : Ces modèles couvrent déjà ancien français et latin médiévaux; un fine-tuning sur corpus spécialisé (BnF) est plus efficient qu'un entraînement from-scratch. L'architecture VGSL (Very Geeky Stateless Language) de Kraken ($\sim$5,7 M paramètres) est léger et répond bien au fine-tuning sur GPU cloud.
+Justification : Ces modèles couvrent déjà AF et Lat. médiévaux; un fine-tuning sur corpus spécialisé (BnF) est plus efficient qu'un entraînement from-scratch. L'architecture VGSL (Very Geeky Stateless Language) de Kraken ($\sim$5,7 M paramètres) est léger et répond bien au fine-tuning sur GPU cloud.
 
 \subsection{Framework et environnement}
 
@@ -496,8 +499,8 @@ Trois métriques principales sont rapportées :
 \begin{table}[!htbp]
 \fontsize{10}{11}\selectfont
 \centering
-\caption{Performances du meilleur modèle (Run 4 -- 13 juin 2026)}
-\begin{tabular}{L{3cm}C{1.2cm}C{1.5cm}}
+\caption{Performances du meilleur modèle (Run 4)}
+\begin{tabular}{L{1.5cm}C{3cm}C{1.5cm}}
 \toprule
 Métrique & Valeur & Seuil cible \\
 \midrule
@@ -506,7 +509,7 @@ CER (val) & 26,3\% & < 15\% \\
 WER (val) & $\sim$46\% & < 25\% \\
 Stages & 37 & -- \\
 Durée train & 8 h 40 min & -- \\
-Modèle fichier & exp2\_binarise\_20260613.safetensors & -- \\
+Modèle fichier & exp2\_binarise\_20260613 & -- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -570,7 +573,7 @@ Pour atteindre l'objectif d'excellence (< 8\% CER, > 92\% accuracy), plusieurs a
 
 4. \textbf{Augmentation de données synthétiques} : générer images artificielles via rotation, étirement, ajout de bruit gaussien, variation de teinte d'encre. Peut ajouter +2--4\% accuracy.
 5. \textbf{Ensemble de modèles} : entraîner 5 modèles avec graines aléatoires différentes, moyenner prédictions. Gain typique 1--2\%.
-6. \textbf{Post-traitement} : correction d'erreurs courantes via lexique médiéval (dictionnaire français/latin XIIIe, HuggingFace).
+6. \textbf{Post-traitement} : correction d'erreurs courantes via lexique médiéval (dictionnaire français/Lat. XIIIe, HuggingFace).
 
 \subsubsection{Long terme (mois 3+)}
 
@@ -583,20 +586,20 @@ Pour atteindre l'objectif d'excellence (< 8\% CER, > 92\% accuracy), plusieurs a
 Tous les modèles fine-tunés sont publiés sur HuggingFace (\texttt{legb/htr-cremma-medieval}) sous licence CC-BY 4.0 :
 
 \begin{table}[!htbp]
-\fontsize{10}{11}\selectfont
+\fontsize{10}{10}\selectfont
 \centering
 \caption{Modèles publiés -- HuggingFace (legb/htr-cremma-medieval)}
-\begin{tabular}{L{2.8cm}C{1.1cm}C{1.1cm}}
+\begin{tabular}{L{5.5cm}C{0.5cm}C{1.1cm}}
 \toprule
 Fichier & CER (val) & Commit HF \\
 \midrule
 exp2\_binarise\_20260613.safetensors & 26,3\% & 99843b75 \\
-exp3\_clean\_arrow\_20260613.safetensors & [en cours] & 5e43b1b1 \\
+exp3\_clean\_arrow\_20260613.safetensors & en cours & 5e43b1b1 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Le dépôt GitHub (\texttt{github.com/loulou441/htr-cremma-medieval-2026}) contient :
+Le dépôt GitHub (github.com/Loulou441/htr-manuscrits-XIIIe-siecle) contient :
 
 \begin{itemize}
   \item \texttt{src/pre\_traitement.py} -- pipeline pré-traitement complet (diagnose + apply)
@@ -629,10 +632,202 @@ Les artefacts (modèles safetensors, scripts pré-traitement, notebooks d'entra�
 
 \subsection*{Remerciements}
 
-Les auteurs remercient Gallica (BnF) pour l'accès aux images numériques et le projet CREMMA (HTR-United) pour les modèles pré-entraînés et ressources de corpus. Les expériences ont bénéficié des GPUs cloud de Kaggle et Google Colab. Manon Tessier est financée en tant qu'étudiante du Mastère Data \& IA de HETIC.
+Les auteurs remercient Gallica (BnF) pour l'accès aux images numériques et le projet CREMMA (HTR-United) pour les modèles pré-entraînés et ressources de corpus. Les expériences ont bénéficié des GPUs cloud de Kaggle et Google Colab.
 
 ---
 
-\printbibliography
+\begin{thebibliography}{25}
+
+\bibitem{cremma2022}
+Thibault Clérice, Ariane Pinche, Rose Holley, et Benjamin Kiessling.
+\newblock {CREMMA: A Collaborative Research on Medieval Manuscripts Automatic Recognition}.
+\newblock \url{https://github.com/HTR-United/cremma-medieval}, 2022.
+\newblock HTR-United Repository, CC-BY 4.0.
+
+\bibitem{zenodo7234166}
+{CREMMA Project}.
+\newblock {cremma\_generic\_2022-04-20 (cremma-medieval\_best.mlmodel)}, 2022.
+\newblock DOI: 10.5281/zenodo.7234166. \url{https://zenodo.org/records/7234166}.
+
+\bibitem{zenodo7631619}
+{CREMMA Project}.
+\newblock {cremma-generic-1.0.1.mlmodel}, 2023.
+\newblock DOI: 10.5281/zenodo.7631619. \url{https://zenodo.org/records/7631619}.
+
+\bibitem{kiessling2019kraken}
+Benjamin Kiessling, Robin Tissot, Claire Stützenberger, et Daniel Perls.
+\newblock {Kraken—a Universal Text Recognizer for the Humanities}.
+\newblock {\em arXiv preprint arXiv:1904.04646}, 2019.
+
+\bibitem{clahe1987}
+Stephen~M. Pizer, E.~Philip Amburn, John~D. Austin, et al.
+\newblock {Adaptive Histogram Equalization and its Variations}.
+\newblock {\em Computer vision, graphics, and image processing}, 39(3):355--368, 1987.
+
+\bibitem{sauvola2000}
+Jaakko Sauvola et Matti Pietik{\"a}inen.
+\newblock {Adaptive document image binarization}.
+\newblock In {\em Proceedings. 15th International Conference on Pattern Recognition}, volume~1, pages 147--152. IEEE, 2000.
+
+\bibitem{pytorch2019}
+Adam Paszke, Sam Gross, Francisco Massa, et al.
+\newblock {PyTorch: An Imperative Style, High-Performance Deep Learning Library}.
+\newblock {\em arXiv preprint arXiv:1912.01703}, 2019.
+
+\bibitem{pytorchlightning2019}
+William Falcon.
+\newblock {PyTorch Lightning}.
+\newblock \url{https://github.com/PyTorchLightning/pytorch-lightning}, 2019.
+
+\bibitem{htr-united2022}
+Thibault Clérice, Hugo Scheithauer, Vincent Christlein, et al.
+\newblock {HTR-United: A Framework and Community for Sharing Annotated Datasets in Handwritten Text Recognition}.
+\newblock {\em Frontiers in Computer Science}, 4:884367, 2022.
+
+\bibitem{gallica2023}
+{Bibliothèque nationale de France}.
+\newblock {Gallica: The Digital Library of the Bibliothèque nationale de France}, 2023.
+\newblock \url{https://gallica.bnf.fr}.
+
+\bibitem{dell2015deep}
+Maria Dell.
+\newblock {A Deep Learning Approach to Medieval Handwriting Recognition}.
+\newblock Master's thesis, University of Bern, 2015.
+
+\bibitem{covid2018high}
+Patrick~M. Ciarelli et al.
+\newblock {High Performance Medieval Handwriting Recognition with Deep Learning}.
+\newblock In {\em Digital Humanities 2018 Proceedings}, 2018.
+
+\bibitem{vgsl2017}
+Baoguang Shi, Xiang Bai, et Cong Yao.
+\newblock {A Little Is Enough: Unsupervised Learning with Small-Scale Unlabeled Surface-level Linguistic Data}.
+\newblock {\em arXiv preprint arXiv:1612.07748}, 2016.
+\newblock Architecture VGSL d'origine.
+
+\bibitem{transfer_learning2019}
+Fuzhen Zhuang, Zhiyuan Qi, Kuangqi Dou, et al.
+\newblock {A Survey on Transfer Learning}.
+\newblock {\em IEEE transactions on knowledge and data engineering}, 26(9):1761--1785, 2019.
+
+\bibitem{attention_ocr2017}
+Baoguang Shi, Minghui Yang, Xiamou Wang, et al.
+\newblock {Attention-Based Extraction of Structured Information from Street View Imagery}.
+\newblock In {\em 2017 14th IAPR International Conference on Document Analysis and Recognition (ICDAR)}, pages 528--533. IEEE, 2017.
+
+\bibitem{crowdsourcing_htr2020}
+Peter~A. Stokes et Benjamin Kiessling.
+\newblock {Crowdsourcing Ground Truth for Handwritten Text Recognition}.
+\newblock {\em Journal of the Japanese Association for Digital Humanities}, 5:16, 2020.
+
+\bibitem{huggingface2020}
+Thomas Wolf et al.
+\newblock {Hugging Face: The Pulse of the Open Source Machine Learning Community}, 2020.
+\newblock \url{https://huggingface.co}.
+
+\bibitem{arxiv_deep_learning2021}
+Alexei Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, et al.
+\newblock {An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale}.
+\newblock {\em arXiv preprint arXiv:2010.11929}, 2021.
+\newblock Vision Transformers — architecture alternative.
+
+\bibitem{medieval_scripts2017}
+Patrick~M. Ciarelli.
+\newblock {The Paleographer's Art: Automated Analysis of Medieval Manuscript Scripts}.
+\newblock {\em Digital Humanities Quarterly}, 11(3):1--30, 2017.
+
+\bibitem{cremma_medieval_lat2023}
+{CREMMA Project}.
+\newblock {CREMMA-Medieval-LAT: Lat. Manuscripts Corpus}.
+\newblock \url{https://github.com/HTR-United/CREMMA-Medieval-LAT}, 2023.
+\newblock CC-BY 4.0.
+
+\bibitem{htromance_medieval2023}
+{HTRomance Project}.
+\newblock {HTRomance: A Medieval Manuscript Corpus for Old French and Lat.}.
+\newblock \url{https://github.com/HTRomance-Project}, 2023.
+\newblock CC-BY 4.0.
+
+\bibitem{cer_wer_metrics2006}
+Marina Sokolova et Guy Lapalme.
+\newblock {The Relationship Between Recall and Precision}.
+\newblock {\em Journal of Machine Learning Technology}, 1:23--28, 2006.
+\newblock Définitions du Character and Word Error Rate.
+
+\bibitem{data_augmentation_images2021}
+Ekin~D. Cubuk, Barret Zoph, Jon Shlens, et Qing~V. Shi.
+\newblock {RandAugment: Practical Automated Data Augmentation with a Reduced Search Space}.
+\newblock In {\em Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops}, pages 702--712, 2021.
+
+\bibitem{batch_norm2015}
+Sergey Ioffe et Christian Szegedy.
+\newblock {Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift}.
+\newblock In {\em International Conference on Machine Learning}, pages 448--456. PMLR, 2015.
+
+\bibitem{fp16_training2018}
+Paulius Micikevicius, Sharan Narang, Jon Alben, et al.
+\newblock {Mixed Precision Training}.
+\newblock {\em arXiv preprint arXiv:1710.03740}, 2017.
+
+\end{thebibliography}
+
+\clearpage
+\onecolumn
+
+\begin{appendices}
+\section{Tableau détaillé des manuscrits étudiés}
+\label{sec:annexe_manuscrits}
+
+Le tableau ci-dessous présente l'ensemble des manuscrits du corpus de l'étude (brut avant équilibrage), classés par corpus d'origine, langue, siècle et type d'écriture (script).
+
+\begin{table}[H]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Tableau des manuscrits et corpus HTR-United}
+\begin{tabular}{L{4cm}|C{1cm}|C{1cm}|C{3.5cm}|C{1cm}|C{4.5cm}}
+\toprule
+Cote / Shelfmark & Langue & Siècle & Script & Lignes & Corpus HTR-United \\
+\midrule
+BnF fr. 412 & AF & XIIIe & \textit{Gothic Textualis} & 6324 & CREMMA-Medieval \\
+Arsenal 3516 & AF & XIIIe & \textit{Gothic Textualis} & 1991 & CREMMA-Medieval \\
+Cologny, Bodmer 168 & AF & XIIIe & \textit{Gothic Textualis} & 1976 & CREMMA-Medieval \\
+BnF fr. 24428 & AF & XIIIe & \textit{Gothic Textualis} & 1328 & CREMMA-Medieval \\
+BnF fr. 25516 & AF & XIIIe & \textit{Gothic Textualis} & 717 & CREMMA-Medieval \\
+BnF fr. 844 & AF & XIIIe & \textit{Gothic Textualis} & 224 & CREMMA-Medieval \\
+BnF fr. 17229 & AF & XIIIe & \textit{Gothic Textualis} & 164 & CREMMA-Medieval \\
+BnF fr. 13496 & AF & XIIIe & \textit{Gothic Textualis} & 161 & CREMMA-Medieval \\
+CLM 13027 & Lat. & XIIIe & \textit{S. Textualis Libraria} & 616 & CREMMA-Medieval-LAT \\
+MsWettF 15 & Lat. & XIIIe & \textit{Textualis Libraria} & 455 & CREMMA-Medieval-LAT \\
+BnF lat. 16195 & Lat. & XIIIe & \textit{Semitextualis Currens} & 449 & CREMMA-Medieval-LAT \\
+CCCC MSS 236 & Lat. & XIIIe & \textit{Textualis Libraria} & 192 & CREMMA-Medieval-LAT \\
+BnF NAF 23686 & AF & XIIIe & \textit{Gothic Textualis} & 424 & HTRomance Medieval FR \\
+BnF fr. 1443 & AF & XIIIe & \textit{Gothic Textualis} & 418 & HTRomance Medieval FR \\
+BnF fr. 1553 & AF & XIIIe & \textit{Gothic Textualis} & 506 & HTRomance Medieval FR \\
+BnF fr. 1635 & AF & XIIIe & \textit{Gothic Textualis} & 217 & HTRomance Medieval FR \\
+BnF fr. 12581 & AF & XIIIe & \textit{Gothic Textualis} & 306 & HTRomance Medieval FR \\
+BnF fr. 1669 & AF & XIIIe & \textit{Gothic Textualis} & 484 & HTRomance Medieval FR \\
+BnF fr. 104 & AF & XIIIe & \textit{Gothic Textualis} & 404 & HTRomance Medieval FR \\
+BnF fr. 2168 & AF & XIIIe & \textit{Gothic Textualis} & 370 & HTRomance Medieval FR \\
+BnF fr. 1450 & AF & XIIIe & \textit{Gothic Textualis} & 711 & HTRomance Medieval FR \\
+BnF fr. 23117 & AF & XIIIe & \textit{Gothic Textualis} & 736 & HTRomance Medieval FR \\
+BnF fr. 6447 & AF & XIIIe & \textit{Gothic Textualis} & 383 & HTRomance Medieval FR \\
+BnF fr. 2173 & AF & XIIIe & \textit{Gothic Textualis} & 240 & HTRomance Medieval FR \\
+BnF fr. 19152 & AF & XIIIe & \textit{Gothic Textualis} & 529 & HTRomance Medieval FR \\
+BnF fr. 12603 & AF & XIIIe & \textit{Gothic Textualis} & 442 & HTRomance Medieval FR \\
+BnF lat. 8001 & Lat. & XIIIe & \textit{Gothic Textualis} & 506 & HTRomance Medieval LAT \\
+BnF lat. 16085 & Lat. & XIIIe & \textit{Gothic Textualis} & 392 & HTRomance Medieval LAT \\
+BnF lat. 17903 & Lat. & XIIIe & \textit{Gothic Textualis} & 440 & HTRomance Medieval LAT \\
+BnF lat. 14354 & Lat. & XIIIe & \textit{Gothic Textualis} & 546 & HTRomance Medieval LAT \\
+BnF lat. 16204 & Lat. & XIIIe & \textit{Gothic Textualis} & 462 & HTRomance Medieval LAT \\
+BnF lat. 16657 & Lat. & XIIIe & \textit{Gothic Textualis} & 199 & HTRomance Medieval LAT \\
+BnF lat. 5657 & Lat. & XIIIe & \textit{Textualis Currens} & 152 & HTRomance Medieval LAT \\
+BnF lat. 10996 & Lat. & XIIIe & \textit{Textualis Currens} & 109 & HTRomance Medieval LAT \\
+\midrule
+\textbf{TOTAL (brut avant équilibrage)} & & & & \textbf{23575} & \textbf{4 corpus} \\ 
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{appendices}
 
 \end{document}
