@@ -14,6 +14,11 @@
 | 3 | Colab A100 | 13 juin 2026 | cremma-generic-1.0.1 | binarisé (mode 1) | 71.9% | 28.1% | Mismatch L/1 — stagnation stage 12 |
 | **4** | **Kaggle T4 x2** | **13 juin 2026** | **cremma_generic** | **binarisé (mode 1)** | **73.67%** | **26.3%** | **Mismatch L/1 — meilleur à ce jour** |
 | 5 | Kaggle T4 x2 | 14 juin 2026 | cremma-generic-1.0.1 | binarisé (mode 1) | 73.67% | 26.3% | Identique Run 4 — même mismatch L/1 |
+| **7 (Exp 3)** | **Kaggle T4 x2** | **15 juin 2026** | **cremma-generic-1.0.1** | **`train_clean.arrow` — grayscale mode L (vérifié)** | **73.56%** | **26.4%** | **Plafond ~26% PERSISTE malgré grayscale confirmé — cause ailleurs** |
+
+> ⚠️ **Exp 3 (Run 7) = résultat décisif, mais cause mal interprétée.** Le run « grayscale » a reproduit *exactement* le plafond ~26% des runs 1–6, et le warning `mode 1 data` est réapparu dans les logs. **Hypothèse initiale (Arrow binarisé) RÉFUTÉE** : la vérification PIL du 15 juin 20h57 montre que `train_clean.arrow` (SHA `1bec767c…`, le fichier même utilisé par Exp 3) est **100% mode L** (508/508 lignes échantillonnées). Le SHA est resté identique après recompilation depuis `preprocessed_grayscale/` → le fichier S3 était déjà grayscale.
+>
+> **Conséquences :** (1) le warning `mode 1 data` de kraken **ne reflète pas le mode réel des images d'entraînement** — c'est un faux signal (vérifie probablement une métadonnée du modèle ou le 1er record, pas le dataset). (2) Le plafond ~26% n'est **pas** dû au mismatch L/1. La cause est ailleurs : corpus limité, hyperparamètres, alphabet, ou la métrique reduceonplateau jamais déclenchée (`val_metric not available`). **À réinvestiguer.**
 
 ---
 
@@ -317,6 +322,77 @@ WARNING: Neural network has been trained on mode L images,
 
 ---
 
+## Run 7 — Exp 3 « grayscale optimisée » — Kaggle T4 x2 (15 juin 2026) ← résultat décisif NÉGATIF
+
+**Date :** 15 juin 2026, démarrage 16:16:40
+**Notebook :** `kaggle_exp3_finetune_optimise.ipynb`
+**Plateforme :** Kaggle — GPU T4 x2 (`CUDA_VISIBLE_DEVICES: [0,1]`)
+**Objectif annoncé :** percer le plafond CER ~26% via grayscale (mode L) + LR decay réactif
+
+### Hypothèse testée
+Le notebook combinait deux leviers : **(1) Arrow grayscale** (`train_clean.arrow`, censé être mode L) et **(2) fine-tuning doux** (LR 5e-5 + warmup 500 + reduceonplateau + freeze-backbone 2000 + NFD). Le levier (1) était présenté comme MAJEUR : *« Tout le reste n'a d'effet qu'une fois le mismatch L/1 levé. »*
+
+### Configuration
+| Paramètre | Valeur |
+|-----------|--------|
+| Modèle de base | `cremma-generic-1.0.1.mlmodel` |
+| Format données | `train_clean.arrow` / `dev_clean.arrow` (SHA `1bec767c…` — **étiqueté grayscale, en réalité mode 1**) |
+| Batch size | 8 |
+| Max epochs | 50 (`-N 50`) |
+| Early stopping (lag) | 15 (`--lag 15`) |
+| Min epochs | 5 |
+| Workers / Threads | 4 / 4 |
+| Precision | `16-mixed` (fp16, T4 Turing sm_75) |
+| Optimizer | AdamW |
+| Learning rate | 0.00005 |
+| Warmup | 500 samples |
+| Schedule | reduceonplateau (`--sched-patience 5`) |
+| Freeze-backbone | 2000 |
+| Normalisation | NFD (`-u NFD`) |
+| Augmentation | oui |
+| `--resize` | union |
+
+### Courbe d'entraînement (extraits, ~3 min 20 s/stage, 11.7 it/s)
+| Stage | val_accuracy | CER | train_loss | Patience |
+|-------|:-----------:|:---:|:----------:|:--------:|
+| 0 | 72.17% | 27.83% | 145.5 | 0/15 |
+| 5 | 72.95% | 27.05% | 93.5 | 0/15 |
+| 10 | 73.22% | 26.78% | 87.3 | 0/15 |
+| 15 | 73.32% | 26.68% | 81.0 | 0/15 |
+| 20 | 73.44% | 26.56% | 77.1 | 0/15 |
+| **24** | **73.56%** | **26.44%** | 75.9 | 0/15 ← meilleur |
+| 25 | 73.56% | 26.44% | 73.1 | 1/15 |
+| 28 | 73.56% | 26.44% | 71.8 | 4/15 |
+| 30 | 73.42% | 26.58% | 71.8 | 6/15 |
+| 32 | 73.56% | 26.44% | 69.8 | 8/15 |
+
+**Meilleure val_accuracy : 73.56% (stage 24) — CER : 26.44%**
+
+### Diagnostic
+Le warning suivant est réapparu dès le chargement (16:17:06), avant le stage 0 :
+```
+WARNING  Neural network has been trained on mode L images,
+         training set contains mode 1 data. Consider binarizing your data.
+                                                           (vgsl.py:499)
+```
+- Le code de surveillance du notebook l'a interprété comme `WARNING MODE 1 DETECTE — l'Arrow est binarise`. **Cette interprétation s'est révélée FAUSSE.**
+- **Vérification PIL (15 juin 20h57)** : `train_clean.arrow` et `dev_clean.arrow` sont **100% mode L** (508 et 529 lignes échantillonnées, aucune mode 1). Recompilés depuis `preprocessed_grayscale/`, ils donnent le **SHA identique** à la version S3 → le fichier utilisé par Exp 3 était déjà grayscale.
+- Donc le warning `mode 1 data` de kraken **est un faux signal** : il ne décrit pas le mode des images du dataset (il inspecte vraisemblablement une métadonnée du modèle de base ou le premier record avant lecture complète).
+- Le plateau (val_acc 73.56% dès le stage 24, train_loss continue 145 → 70) est donc **structurel mais PAS dû au L/1**.
+- Autres warnings notables : `alphabet mismatch` (26 chars train-only + 2 dev-only) ; `ReduceLROnPlateau conditioned on metric val_metric which is not available` → **le scheduler reduceonplateau n'a jamais déclenché** (LR jamais réduit, fine-tuning resté à LR constant). **Piste sérieuse pour le plateau.**
+
+### Conclusion
+**Le grayscale était bien actif — l'hypothèse L/1 comme cause du plafond est RÉFUTÉE.** Le plafond ~26% a une autre origine, à investiguer :
+1. **Scheduler LR non déclenché** (`val_metric not available`) → corriger le câblage de la métrique pour que reduceonplateau / cosine agisse réellement.
+2. **Corpus** : 213 docs / 18 769 lignes — possible plafond de données.
+3. **Alphabet** : 26 caractères train-only hors accuracy officielle.
+4. Comparer au CER du modèle de base **sans** fine-tuning : vérifier que le fine-tuning apporte quelque chose.
+
+### Artefacts S3
+- Run early-stop — modèle sans gain vs baseline, mais grayscale confirmé : c'est la **vraie baseline grayscale** désormais.
+
+---
+
 ## État de l'infrastructure S3
 
 **Bucket :** `s3://htr-cremma-medieval/` (région `eu-west-3`)
@@ -332,12 +408,12 @@ WARNING: Neural network has been trained on mode L images,
 |-----------|--------|------|--------|-------------|
 | `splits/train.arrow` | 939 MB | 13 juin 2026 | 19 797 | Grayscale mode L — toutes zones |
 | `splits/dev.arrow` | 144 MB | 13 juin 2026 | 3 729 | Grayscale mode L — toutes zones |
-| `splits/train_clean.arrow` | 914 MB | 14 juin 2026 | 18 769 | Grayscale mode L — zones bruit filtrées (5.2%) |
-| `splits/dev_clean.arrow` | 144 MB | 14 juin 2026 | 3 702 | Grayscale mode L — zones bruit filtrées (0.7%) |
+| `splits/train_clean.arrow` | 914 MB | 14 juin 2026 | 18 769 | Grayscale mode L ✅ (vérifié PIL 15 juin : 508/508 mode L) — zones bruit filtrées (5.2%) |
+| `splits/dev_clean.arrow` | 144 MB | 14 juin 2026 | 3 702 | Grayscale mode L ✅ (vérifié PIL 15 juin : 529/529 mode L) — zones bruit filtrées (0.7%) |
 
-SHA-256 :
-- `train_clean.arrow` : `1bec767c9a87caa322b20dc054da85e161ab3e630c498eb1a35ae51d19348026`
-- `dev_clean.arrow` : `20ef530c68228695bb1b68f07a07b6eb2e2ffde0f62fd8e9c2e6b29d6720448e`
+SHA-256 (inchangés après recompilation depuis `preprocessed_grayscale/` le 15 juin → fichiers S3 confirmés grayscale) :
+- `train_clean.arrow` : `1bec767c9a87caa322b20dc054da85e161ab3e630c498eb1a35ae51d19348026` ✅ mode L confirmé
+- `dev_clean.arrow` : `20ef530c68228695bb1b68f07a07b6eb2e2ffde0f62fd8e9c2e6b29d6720448e` ✅ mode L confirmé
 
 ### Splits texte (ALTO)
 | Fichier | Lignes | Date |
