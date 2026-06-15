@@ -149,9 +149,13 @@ La reconnaissance optique de caractères manuscrits (HTR) demeure un défi pour 
 \justifying
 La numérisation et la reconnaissance automatique de textes manuscrits constituent un enjeu majeur pour la préservation numérique du patrimoine médiéval. Les manuscrits des XIIIe--XVe siècles présentent des défis singuliers : écriture gothique textuelle, variabilité d'encre, dégradation du parchemin, et présence d'annotations marginales ou musicalles parasitant la lecture optique.
 
-Le projet CREMMA (\textit{Collaborative Research on Medieval Manuscripts Automated Recognition}) a produit depuis 2017 des modèles HTR génériques entraînés sur corpus multi-lingual et multi-siècles. Le modèle \textit{cremma-generic} atteint $\sim$95\% de précision sur ses propres données de validation, mais montre une généralisation limitée aux manuscrits en dehors de son corpus d'entraînement. Le fine-tuning spécialisé sur corpus cible permet de combler ce \textit{domain gap}.
+Les premiers travaux en HTR médiévale ont montré l'intérêt d'approches profondes spécialisées sur des corpus historiques, avec des résultats prometteurs mais fortement dépendants de la qualité des annotations et de la variabilité paléographique \cite{dell2015deep,covid2018high,medieval_scripts2017}.
+
+Le projet CREMMA (\textit{Collaborative Research on Medieval Manuscripts Automated Recognition}) a produit depuis 2017 des modèles HTR génériques entraînés sur corpus multi-lingual et multi-siècles \cite{cremma2022}. Le modèle \textit{cremma-generic} atteint $\sim$95\% de précision sur ses propres données de validation \cite{zenodo7234166}, mais montre une généralisation limitée aux manuscrits en dehors de son corpus d'entraînement. Le fine-tuning spécialisé sur corpus cible permet de combler ce \textit{domain gap} \cite{transfer_learning2019}.
 
 L'objectif de ce travail est triple : (1) construire un dataset d'entraînement complet agrégé depuis quatre corpus HTR-United couvrant AF et Lat. médiévaux, (2) mettre en place un pipeline de prétraitement adaptatif et reproductible, et (3) documenter intégralement un cycle d'expériences de fine-tuning pour atteindre un CER $<$ 8\% en validation.
+
+Nous nous inscrivons également dans une continuité méthodologique où la constitution de vérité terrain collaborative et la qualité des conventions de transcription sont des facteurs déterminants de performance \cite{crowdsourcing_htr2020}.
 
 ---
 
@@ -165,12 +169,12 @@ Le dataset d'entraînement agrège 21 manuscrits provenant de quatre corpus HTR-
 
 \begin{itemize}
   \item \textbf{CREMMA-Medieval} (8 documents français, XIIIe) : dépôt HTR-United officiel
-  \item \textbf{CREMMA-Medieval-LAT} (4 documents Lat.s) : extension Lat.e de CREMMA
+  \item \textbf{CREMMA-Medieval-LAT} (4 documents Lat.s) : extension Lat.e de CREMMA \cite{cremma_medieval_lat2023}
   \item \textbf{HTRomance Medieval FR} (14 documents français): corpus français du projet HTRomance
-  \item \textbf{HTRomance Medieval LAT} (8 documents Lat.s) : corpus Lat. du projet HTRomance
+  \item \textbf{HTRomance Medieval LAT} (8 documents Lat.s) : corpus Lat. du projet HTRomance \cite{htromance_medieval2023}
 \end{itemize}
 
-Tous les documents sont originaires des collections de la Bibliothèque Nationale de France (BnF) et accessibles via la plateforme Gallica. Le corpus couvre plusieurs scripts : Textualis Gothique, Caroline médiévale, et bâtardes.
+Tous les documents sont originaires des collections de la Bibliothèque Nationale de France (BnF) et accessibles via la plateforme Gallica \cite{gallica2023}. Le corpus couvre plusieurs scripts : Textualis Gothique, Caroline médiévale, et bâtardes.
 
 Le tableau complet des manuscrits du corpus se situe en annexe A.
 
@@ -200,7 +204,7 @@ Licence & CC-BY 4.0 \\
 
 \subsection{Répartition par zone ALTO et filtrage}
 
-Les fichiers ALTO XML v4 contiennent des annotations de zones (MainZone, MarginTextZone, MusicZone, etc.). Le filtrage appliqué suit les conventions HTR-United :
+Les fichiers ALTO XML v4 contiennent des annotations de zones (MainZone, MarginTextZone, MusicZone, etc.). Le filtrage appliqué suit les conventions HTR-United \cite{htr-united2022} :
 
 \begin{table}[!htbp]
 \fontsize{10}{11}\selectfont
@@ -278,7 +282,7 @@ Un consensus sur les trois estimations valide la correction. L'angle detecte est
 
 \subsection{Amélioration du contraste -- CLAHE}
 
-La méthode CLAHE (\textit{Contrast Limited Adaptive Histogram Equalization}) adapte l'égalisation d'histogramme à des blocs locaux (typiquement $8 \times 8$ pixels) tout en limitant l'amplification des artefacts via un plafond de contraste (clip limit = 2.0 à 5.0).
+La méthode CLAHE (\textit{Contrast Limited Adaptive Histogram Equalization}) \cite{clahe1987} adapte l'égalisation d'histogramme à des blocs locaux (typiquement $8 \times 8$ pixels) tout en limitant l'amplification des artefacts via un plafond de contraste (clip limit = 2.0 à 5.0).
 
 Diagnostic : calcul de l'écart-type de la luminance dans chaque bloc. Si uniformité $>$ seuil, CLAHE risque de prodamplifier le bruit; sinon, elle ameliore la separation encre--parchemin.
 
@@ -293,7 +297,7 @@ Après CLAHE, un filtrage médian ($5 \times 5$) supprime les pics de bruit isol
 Le corpus CREMMA Medieval source (Gallica) fournit des JPEG en couleur. Deux branches de traitement sont testées :
 
 \begin{itemize}
-  \item \textbf{Mode 1 (binarisé)} : conversion en niveaux de gris, puis binarisation Sauvola adaptatif (window $= 21$). Résultat : image binaire noir/blanc.
+  \item \textbf{Mode 1 (binarisé)} : conversion en niveaux de gris, puis binarisation Sauvola adaptatif \cite{sauvola2000} (window $= 21$). Résultat : image binaire noir/blanc.
   \item \textbf{Mode L (grayscale)} : conversion en niveaux de gris pur (8 bits, 0--255). Aucune binarisation.
 \end{itemize}
 
@@ -326,17 +330,17 @@ Tous les hyperparamètres (clip limit, tile size, kernel size) sont paramétris�
 Deux modèles de base ont été testés :
 
 \begin{itemize}
-  \item \textbf{cremma\_generic.mlmodel} (Zenodo 7234166) : version initiale CREMMA, entraînée en 2022
-  \item \textbf{cremma-generic-1.0.1.mlmodel} (Zenodo 7631619) : version 1.0.1, améliorée couverture alphabet médiéval
+  \item \textbf{cremma\_generic.mlmodel} \cite{zenodo7234166} : version initiale CREMMA, entraînée en 2022
+  \item \textbf{cremma-generic-1.0.1.mlmodel} \cite{zenodo7631619} : version 1.0.1, améliorée couverture alphabet médiéval
 \end{itemize}
 
-Justification : Ces modèles couvrent déjà AF et Lat. médiévaux; un fine-tuning sur corpus spécialisé (BnF) est plus efficient qu'un entraînement from-scratch. L'architecture VGSL (Very Geeky Stateless Language) de Kraken ($\sim$5,7 M paramètres) est léger et répond bien au fine-tuning sur GPU cloud.
+Justification : Ces modèles couvrent déjà AF et Lat. médiévaux; un fine-tuning sur corpus spécialisé (BnF) est plus efficient qu'un entraînement from-scratch. L'architecture VGSL (Very Geeky Stateless Language) de Kraken \cite{vgsl2017} ($\sim$5,7 M paramètres) est léger et répond bien au fine-tuning sur GPU cloud.
 
 \subsection{Framework et environnement}
 
 \begin{itemize}
-  \item \textbf{Kraken 7.0.x} : bibliothèque HTR open-source (licence Apache 2.0)
-  \item \textbf{PyTorch Lightning} : entraînement distribué avec logging automatique
+  \item \textbf{Kraken 7.0.x} \cite{kiessling2019kraken} : bibliothèque HTR open-source (licence Apache 2.0)
+  \item \textbf{PyTorch} \cite{pytorch2019} et \textbf{PyTorch Lightning} \cite{pytorchlightning2019} : entraînement distribué avec logging automatique
   \item \textbf{Plateforme} : Kaggle T4 $\times$ 2 (GPU Turing sm\_75), Google Colab A100 (GPU Ampere sm\_80)
   \item \textbf{Compilation des données} : Arrow binaire pour chargement rapide
 \end{itemize}
@@ -371,11 +375,11 @@ Workers (DataLoader) & 4 & Parallélisation chargement images (Kaggle) \\
   
   \item \textbf{Batch size 8} : Kaggle T4 $\times$ 2 offre $\sim$32 GB RAM total. Batch 8 permet 4--6 batchs accumulés sur GPU sans OOM, et améliore la stabilité du gradient.
   
-  \item \textbf{Precision 16-mixed (fp16)} : GPU Turing (Kaggle T4) supporte Tensor Cores et fp16. Réduit VRAM de 25--30\% et accélère l'entraînement. Loss scaling automatique prévient l'underflow.
+  \item \textbf{Precision 16-mixed (fp16)} \cite{fp16_training2018} : GPU Turing (Kaggle T4) supporte Tensor Cores et fp16. Réduit VRAM de 25--30\% et accélère l'entraînement. Loss scaling automatique prévient l'underflow, en complément d'une stabilisation d'entraînement classique via normalisation des activations \cite{batch_norm2015}.
   
   \item \textbf{Early stopping lag 10} : Observation empirique : après epoch 10, la courbe val atteint un plateau ($\sim$73\% val\_accuracy). Patience 10 permet 10 epochs supplémentaires avant arrêt, laissant la marge pour fluctuations.
   
-  \item \textbf{Data augmentation} : Rotation $\pm 2^{\circ}$, stretch horizontal/vertical 0.9--1.1×, shear 0.1 rad. Imite variabilité naturaldes scans manuscrits.
+  \item \textbf{Data augmentation} \cite{data_augmentation_images2021} : Rotation $\pm 2^{\circ}$, stretch horizontal/vertical 0.9--1.1×, shear 0.1 rad. Imite variabilité naturelle des scans manuscrits.
 \end{itemize}
 
 \subsection{Résultats expérimentaux -- Vue d'ensemble}
@@ -487,11 +491,11 @@ Pour contourner ce problème, une nouvelle compilation Arrow en mode L pur (sans
 Trois métriques principales sont rapportées :
 
 \begin{enumerate}
-  \item \textbf{Character Error Rate (CER)} : $\text{CER} = \frac{I + D + S}{N}$ où $I$ = insertions, $D$ = deletions, $S$ = substitutions, $N$ = nombre de caractères en référence. Plage 0--100\%, objectif < 8\%.
+  \item \textbf{Character Error Rate (CER)} \cite{cer_wer_metrics2006} : $\text{CER} = \frac{I + D + S}{N}$ où $I$ = insertions, $D$ = deletions, $S$ = substitutions, $N$ = nombre de caractères en référence. Plage 0--100\%, objectif < 8\%.
   
   \item \textbf{Accuracy} : $\text{acc} = 1 - \text{CER}$, exprimée en \%. Objectif validation > 85\%, excellence > 92\%.
   
-  \item \textbf{Word Error Rate (WER)} : même formule, au niveau du mot. Observé $\approx$46\% sur meilleure run (Run 4).
+  \item \textbf{Word Error Rate (WER)} \cite{cer_wer_metrics2006} : même formule, au niveau du mot. Observé $\approx$46\% sur meilleure run (Run 4).
 \end{enumerate}
 
 \subsection{Performances actuelles}
@@ -577,13 +581,13 @@ Pour atteindre l'objectif d'excellence (< 8\% CER, > 92\% accuracy), plusieurs a
 
 \subsubsection{Long terme (mois 3+)}
 
-7. \textbf{Fine-tuning d'architecture} : affiner $n_{\text{layers}}$ (ajouter/supprimer couches convolutives), $n_{\text{hidden}}$ (élargir représentations).
+7. \textbf{Fine-tuning d'architecture} : affiner $n_{\text{layers}}$ (ajouter/supprimer couches convolutives), $n_{\text{hidden}}$ (élargir représentations), et comparer des variantes à mécanismes d'attention ou transformeurs vision \cite{attention_ocr2017,arxiv_deep_learning2021}.
 8. \textbf{Données étiquetées pour caractères manquants} : collecter pages additionnelles contenant les 22 caractères hors-vocab, ré-entraîner.
 9. \textbf{Transfert mutli-tâche} : ajouter tâche auxiliaire (détection de zone ALTO, classification de script) pour enrichir représentations.
 
 \subsection{Reproductibilité et partage}
 
-Tous les modèles fine-tunés sont publiés sur HuggingFace (\texttt{legb/htr-cremma-medieval}) sous licence CC-BY 4.0 :
+Tous les modèles fine-tunés sont publiés sur HuggingFace \cite{huggingface2020} (\texttt{legb/htr-cremma-medieval}) sous licence CC-BY 4.0 :
 
 \begin{table}[!htbp]
 \fontsize{10}{10}\selectfont
@@ -624,7 +628,7 @@ La meilleure performance actuelle atteint \textbf{73,67\% de précision de valid
 Nous avons identifié et documenté précisément cette limitation et proposé une solution (Exp 3 en mode L pur). Prochaines étapes incluent l'extension du corpus, l'augmentation synthétique et l'ensembling pour atteindre l'obj
 ectif de < 8\% CER (> 92\% accuracy).
 
-Les artefacts (modèles safetensors, scripts pré-traitement, notebooks d'entraînement) sont publiquement disponibles pour reproduit et étendy ce travail. La transparence méthodologique et la documentation complète des runs expérimentales constituent le principal apport reproduisibilité de ce projet.
+Les artefacts (modèles safetensors, scripts pré-traitement, notebooks d'entraînement) sont publiquement disponibles pour reproduit et étendy ce travail. La transparence méthodologique et la documentation complète des runs expérimentales constituent le principal apport reproduisibilité de ce projet, dans la continuité des pratiques d'ouverture de la communauté HTR \cite{crowdsourcing_htr2020}.
 
 \balance
 \vspace{0.5cm}
@@ -632,144 +636,11 @@ Les artefacts (modèles safetensors, scripts pré-traitement, notebooks d'entra�
 
 \subsection*{Remerciements}
 
-Les auteurs remercient Gallica (BnF) pour l'accès aux images numériques et le projet CREMMA (HTR-United) pour les modèles pré-entraînés et ressources de corpus. Les expériences ont bénéficié des GPUs cloud de Kaggle et Google Colab.
+Les auteurs remercient Gallica (BnF) \cite{gallica2023} pour l'accès aux images numériques et le projet CREMMA \cite{cremma2022} (HTR-United) \cite{htr-united2022} pour les modèles pré-entraînés et ressources de corpus. Les expériences ont bénéficié des GPUs cloud de Kaggle et Google Colab.
 
 ---
-
-\begin{thebibliography}{25}
-
-\bibitem{cremma2022}
-Thibault Clérice, Ariane Pinche, Rose Holley, et Benjamin Kiessling.
-\newblock {CREMMA: A Collaborative Research on Medieval Manuscripts Automatic Recognition}.
-\newblock \url{https://github.com/HTR-United/cremma-medieval}, 2022.
-\newblock HTR-United Repository, CC-BY 4.0.
-
-\bibitem{zenodo7234166}
-{CREMMA Project}.
-\newblock {cremma\_generic\_2022-04-20 (cremma-medieval\_best.mlmodel)}, 2022.
-\newblock DOI: 10.5281/zenodo.7234166. \url{https://zenodo.org/records/7234166}.
-
-\bibitem{zenodo7631619}
-{CREMMA Project}.
-\newblock {cremma-generic-1.0.1.mlmodel}, 2023.
-\newblock DOI: 10.5281/zenodo.7631619. \url{https://zenodo.org/records/7631619}.
-
-\bibitem{kiessling2019kraken}
-Benjamin Kiessling, Robin Tissot, Claire Stützenberger, et Daniel Perls.
-\newblock {Kraken—a Universal Text Recognizer for the Humanities}.
-\newblock {\em arXiv preprint arXiv:1904.04646}, 2019.
-
-\bibitem{clahe1987}
-Stephen~M. Pizer, E.~Philip Amburn, John~D. Austin, et al.
-\newblock {Adaptive Histogram Equalization and its Variations}.
-\newblock {\em Computer vision, graphics, and image processing}, 39(3):355--368, 1987.
-
-\bibitem{sauvola2000}
-Jaakko Sauvola et Matti Pietik{\"a}inen.
-\newblock {Adaptive document image binarization}.
-\newblock In {\em Proceedings. 15th International Conference on Pattern Recognition}, volume~1, pages 147--152. IEEE, 2000.
-
-\bibitem{pytorch2019}
-Adam Paszke, Sam Gross, Francisco Massa, et al.
-\newblock {PyTorch: An Imperative Style, High-Performance Deep Learning Library}.
-\newblock {\em arXiv preprint arXiv:1912.01703}, 2019.
-
-\bibitem{pytorchlightning2019}
-William Falcon.
-\newblock {PyTorch Lightning}.
-\newblock \url{https://github.com/PyTorchLightning/pytorch-lightning}, 2019.
-
-\bibitem{htr-united2022}
-Thibault Clérice, Hugo Scheithauer, Vincent Christlein, et al.
-\newblock {HTR-United: A Framework and Community for Sharing Annotated Datasets in Handwritten Text Recognition}.
-\newblock {\em Frontiers in Computer Science}, 4:884367, 2022.
-
-\bibitem{gallica2023}
-{Bibliothèque nationale de France}.
-\newblock {Gallica: The Digital Library of the Bibliothèque nationale de France}, 2023.
-\newblock \url{https://gallica.bnf.fr}.
-
-\bibitem{dell2015deep}
-Maria Dell.
-\newblock {A Deep Learning Approach to Medieval Handwriting Recognition}.
-\newblock Master's thesis, University of Bern, 2015.
-
-\bibitem{covid2018high}
-Patrick~M. Ciarelli et al.
-\newblock {High Performance Medieval Handwriting Recognition with Deep Learning}.
-\newblock In {\em Digital Humanities 2018 Proceedings}, 2018.
-
-\bibitem{vgsl2017}
-Baoguang Shi, Xiang Bai, et Cong Yao.
-\newblock {A Little Is Enough: Unsupervised Learning with Small-Scale Unlabeled Surface-level Linguistic Data}.
-\newblock {\em arXiv preprint arXiv:1612.07748}, 2016.
-\newblock Architecture VGSL d'origine.
-
-\bibitem{transfer_learning2019}
-Fuzhen Zhuang, Zhiyuan Qi, Kuangqi Dou, et al.
-\newblock {A Survey on Transfer Learning}.
-\newblock {\em IEEE transactions on knowledge and data engineering}, 26(9):1761--1785, 2019.
-
-\bibitem{attention_ocr2017}
-Baoguang Shi, Minghui Yang, Xiamou Wang, et al.
-\newblock {Attention-Based Extraction of Structured Information from Street View Imagery}.
-\newblock In {\em 2017 14th IAPR International Conference on Document Analysis and Recognition (ICDAR)}, pages 528--533. IEEE, 2017.
-
-\bibitem{crowdsourcing_htr2020}
-Peter~A. Stokes et Benjamin Kiessling.
-\newblock {Crowdsourcing Ground Truth for Handwritten Text Recognition}.
-\newblock {\em Journal of the Japanese Association for Digital Humanities}, 5:16, 2020.
-
-\bibitem{huggingface2020}
-Thomas Wolf et al.
-\newblock {Hugging Face: The Pulse of the Open Source Machine Learning Community}, 2020.
-\newblock \url{https://huggingface.co}.
-
-\bibitem{arxiv_deep_learning2021}
-Alexei Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, et al.
-\newblock {An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale}.
-\newblock {\em arXiv preprint arXiv:2010.11929}, 2021.
-\newblock Vision Transformers — architecture alternative.
-
-\bibitem{medieval_scripts2017}
-Patrick~M. Ciarelli.
-\newblock {The Paleographer's Art: Automated Analysis of Medieval Manuscript Scripts}.
-\newblock {\em Digital Humanities Quarterly}, 11(3):1--30, 2017.
-
-\bibitem{cremma_medieval_lat2023}
-{CREMMA Project}.
-\newblock {CREMMA-Medieval-LAT: Lat. Manuscripts Corpus}.
-\newblock \url{https://github.com/HTR-United/CREMMA-Medieval-LAT}, 2023.
-\newblock CC-BY 4.0.
-
-\bibitem{htromance_medieval2023}
-{HTRomance Project}.
-\newblock {HTRomance: A Medieval Manuscript Corpus for Old French and Lat.}.
-\newblock \url{https://github.com/HTRomance-Project}, 2023.
-\newblock CC-BY 4.0.
-
-\bibitem{cer_wer_metrics2006}
-Marina Sokolova et Guy Lapalme.
-\newblock {The Relationship Between Recall and Precision}.
-\newblock {\em Journal of Machine Learning Technology}, 1:23--28, 2006.
-\newblock Définitions du Character and Word Error Rate.
-
-\bibitem{data_augmentation_images2021}
-Ekin~D. Cubuk, Barret Zoph, Jon Shlens, et Qing~V. Shi.
-\newblock {RandAugment: Practical Automated Data Augmentation with a Reduced Search Space}.
-\newblock In {\em Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops}, pages 702--712, 2021.
-
-\bibitem{batch_norm2015}
-Sergey Ioffe et Christian Szegedy.
-\newblock {Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift}.
-\newblock In {\em International Conference on Machine Learning}, pages 448--456. PMLR, 2015.
-
-\bibitem{fp16_training2018}
-Paulius Micikevicius, Sharan Narang, Jon Alben, et al.
-\newblock {Mixed Precision Training}.
-\newblock {\em arXiv preprint arXiv:1710.03740}, 2017.
-
-\end{thebibliography}
+\nocite{*}
+\printbibliography[heading=bibliography]
 
 \clearpage
 \onecolumn
