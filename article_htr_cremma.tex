@@ -13,6 +13,7 @@
 \usepackage{ragged2e}
 \usepackage{amssymb}
 \usepackage{parskip}
+\usepackage{appendix}
 \usepackage{amsmath}
 \usepackage{newtxtext}
 \usepackage{booktabs}
@@ -132,7 +133,7 @@
 \fontsize{10}{12}\selectfont
 \justifying
 \noindent
-La reconnaissance optique de caractères manuscrits (HTR) demeure un défi pour les documents patrimoniaux anciens. Ce travail présente un pipeline complet de fine-tuning du modèle Kraken \textit{cremma-generic} sur le corpus CREMMA Medieval, couvrant 21 manuscrits en AF et Lat. datant des XIIIe--XVe siècles. Nous décrivons (1) l'agrégation d'un dataset de 19~800 lignes d'entraînement à partir de quatre corpus HTR-United, (2) un prétraitement adaptatif comprenant deskewing, amélioration du contraste (CLAHE), et filtrage du bruit, et (3) l'entraînement en environnement cloud (Kaggle, Colab) avec validation sur un jeu de développement de ~3700 lignes. Notre meilleure configuration atteint une précision de validation de 73,67\% et un taux d'erreur de caractère (CER) de 26,3\%. Nous discutons des limitations actuelles (mismatch mode d'image, représentation de corpus) et présentons un roadmap vers 8\% CER. Les modèles sont publiés sous licence CC-BY sur HuggingFace (\texttt{legb/htr-cremma-medieval}).
+La reconnaissance optique de caractères manuscrits (HTR) demeure un défi pour les documents patrimoniaux anciens. Ce travail présente un pipeline complet de fine-tuning du modèle Kraken \textit{cremma-generic} sur le corpus CREMMA Medieval, couvrant 33 manuscrits en AF et Lat. datant du XIIIe siècle. Nous décrivons (1) l'agrégation d'un dataset de 23~575 lignes d'entraînement à partir de quatre corpus HTR-United, (2) un prétraitement adaptatif comprenant deskewing, amélioration du contraste (CLAHE), et filtrage du bruit, et (3) l'entraînement en environnement cloud (Kaggle, Colab) avec validation sur un jeu de développement de ~3700 lignes. Notre meilleure configuration atteint une précision de validation de 73,67\% et un taux d'erreur de caractère (CER) de 26,3\%. Nous discutons des limitations actuelles (mismatch mode d'image, représentation de corpus) et présentons un roadmap vers 8\% CER. Les modèles sont publiés sous licence CC-BY sur HuggingFace (\texttt{legb/htr-cremma-medieval}).
 
 \vspace{0.3cm}
 {\noindent\fontsize{10}{12}\selectfont\raggedright\textbf{Keywords:} Handwritten Text Recognition (HTR); Manuscript Digitization; Medieval French; Kraken; Deep Learning; Fine-tuning; CREMMA; Optical Character Recognition\par}
@@ -163,65 +164,15 @@ L'objectif de ce travail est triple : (1) construire un dataset d'entraînement 
 Le dataset d'entraînement agrège 21 manuscrits provenant de quatre corpus HTR-United publics :
 
 \begin{itemize}
-  \item \textbf{CREMMA-Medieval} (11 documents français, XIIIe--XVe) : dépôt HTR-United officiel
-  \item \textbf{CREMMA-Medieval-LAT} (12 documents Lat.s) : extension Lat.e de CREMMA
-  \item \textbf{HTRomance Medieval FR} : corpus français du projet HTRomance
-  \item \textbf{HTRomance Medieval LAT} : corpus Lat. du projet HTRomance
+  \item \textbf{CREMMA-Medieval} (8 documents français, XIIIe) : dépôt HTR-United officiel
+  \item \textbf{CREMMA-Medieval-LAT} (4 documents Lat.s) : extension Lat.e de CREMMA
+  \item \textbf{HTRomance Medieval FR} (14 documents français): corpus français du projet HTRomance
+  \item \textbf{HTRomance Medieval LAT} (8 documents Lat.s) : corpus Lat. du projet HTRomance
 \end{itemize}
 
 Tous les documents sont originaires des collections de la Bibliothèque Nationale de France (BnF) et accessibles via la plateforme Gallica. Le corpus couvre plusieurs scripts : Textualis Gothique, Caroline médiévale, et bâtardes.
 
-\begin{table}[H]
-\fontsize{10}{11}\selectfont
-\centering
-\caption{Tableau des manuscrits et corpus HTR-United}
-\begin{tabular}{L{1cm}|C{1cm}|C{1cm}|C{1cm}|C{0.8cm}|C{1cm}}
-\toprule
-Cote / Shelfmark & Langue & Siècle & Script & Lignes & Corpus HTR-United \\
-\midrule
-BnF fr. 412 & AF & XIIIe & \textit{Gothic Textualis} & 6324 & CREMMA-Medieval \\
-Arsenal 3516 & AF & XIIIe & \textit{Gothic Textualis} & 1991 & CREMMA-Medieval \\
-Cologny, Bodmer 168 & AF & XIIIe & \textit{Gothic Textualis} & 1976 & CREMMA-Medieval \\
-BnF fr. 24428 & AF & XIIIe & \textit{Gothic Textualis} & 1328 & CREMMA-Medieval \\
-BnF fr. 25516 & AF & XIIIe & \textit{Gothic Textualis} & 717 & CREMMA-Medieval \\
-BnF fr. 844 & AF & XIIIe & \textit{Gothic Textualis} & 224 & CREMMA-Medieval \\
-BnF fr. 17229 & AF & XIIIe & \textit{Gothic Textualis} & 164 & CREMMA-Medieval \\
-BnF fr. 13496 & AF & XIIIe & \textit{Gothic Textualis} & 161 & CREMMA-Medieval \\
-CLM 13027 & Lat. & XIIIe & \textit{S. Textualis Libraria} & 616 & CREMMA-Medieval-LAT \\
-MsWettF 15 & Lat. & XIIIe & \textit{Textualis Libraria} & 455 & CREMMA-Medieval-LAT \\
-BnF lat. 16195 & Lat. & XIIIe & \textit{Semitextualis Currens} & 449 & CREMMA-Medieval-LAT \\
-CCCC MSS 236 & Lat. & XIIIe & \textit{Textualis Libraria} & 192 & CREMMA-Medieval-LAT \\
-BnF NAF 23686 & AF & XIIIe & \textit{Gothic Textualis} & 424 & HTRomance Medieval FR \\
-BnF fr. 1443 & AF & XIIIe & \textit{Gothic Textualis} & 418 & HTRomance Medieval FR \\
-BnF fr. 1553 & AF & XIIIe & \textit{Gothic Textualis} & 506 & HTRomance Medieval FR \\
-BnF fr. 1635 & AF & XIIIe & \textit{Gothic Textualis} & 217 & HTRomance Medieval FR \\
-BnF fr. 12581 & AF & XIIIe & \textit{Gothic Textualis} & 306 & HTRomance Medieval FR \\
-BnF fr. 1669 & AF & XIIIe & \textit{Gothic Textualis} & 484 & HTRomance Medieval FR \\
-BnF fr. 104 & AF & XIIIe & \textit{Gothic Textualis} & 404 & HTRomance Medieval FR \\
-BnF fr. 2168 & AF & XIIIe & \textit{Gothic Textualis} & 370 & HTRomance Medieval FR \\
-BnF fr. 1450 & AF & XIIIe & \textit{Gothic Textualis} & 711 & HTRomance Medieval FR \\
-BnF fr. 23117 & AF & XIIIe & \textit{Gothic Textualis} & 736 & HTRomance Medieval FR \\
-BnF fr. 6447 & AF & XIIIe & \textit{Gothic Textualis} & 383 & HTRomance Medieval FR \\
-BnF fr. 2173 & AF & XIIIe & \textit{Gothic Textualis} & 240 & HTRomance Medieval FR \\
-BnF fr. 19152 & AF & XIIIe & \textit{Gothic Textualis} & 529 & HTRomance Medieval FR \\
-BnF fr. 12603 & AF & XIIIe & \textit{Gothic Textualis} & 442 & HTRomance Medieval FR \\
-BnF lat. 8001 & Lat. & XIIIe & \textit{Gothic Textualis} & 506 & HTRomance Medieval LAT \\
-BnF lat. 16085 & Lat. & XIIIe & \textit{Gothic Textualis} & 392 & HTRomance Medieval LAT \\
-BnF lat. 17903 & Lat. & XIIIe & \textit{Gothic Textualis} & 440 & HTRomance Medieval LAT \\
-BnF lat. 14354 & Lat. & XIIIe & \textit{Gothic Textualis} & 546 & HTRomance Medieval LAT \\
-BnF lat. 16204 & Lat. & XIIIe & \textit{Gothic Textualis} & 462 & HTRomance Medieval LAT \\
-BnF lat. 16657 & Lat. & XIIIe & \textit{Gothic Textualis} & 199 & HTRomance Medieval LAT \\
-BnF lat. 5657 & Lat. & XIIIe & \textit{Textualis Currens} & 152 & HTRomance Medieval LAT \\
-BnF lat. 10996 & Lat. & XIIIe & \textit{Textualis Currens} & 109 & HTRomance Medieval LAT \\
-BnF fr. 837 & AF & XIIIe & \textit{Gothic Textualis} & 150 & CIHAM Fabliaux \\
-BnF fr. 1593 & AF & XIIIe & \textit{Gothic Textualis} & 150 & CIHAM Fabliaux \\
-Mazarine 1553 & AF & XIIIe & \textit{Gothic Textualis} & 150 & CIHAM Fabliaux \\
-TQ2025 LAT (XIIIe est.) & Lat. & XIIIe & \textit{Textualis (varié)} & 1265 & TranscriboQuest 2025 \\
-\midrule
-\textbf{TOTAL (brut avant équilibrage)} & & & & \textbf{25288} & \textbf{4 corpus} \\ 
-\bottomrule
-\end{tabular}
-\end{table}
+Le tableau complet des manuscrits du corpus se situe en annexe A.
 
 \subsection{Statistiques globales}
 
@@ -237,7 +188,7 @@ Documents ALTO (entraînement) & 213 \\
 Documents ALTO (développement) & 32 \\
 Documents ALTO (test) & 3 \\
 Lignes totales (toutes zones) & 48~278 \\
-Lignes texte courant (filtré) & 18~769 \\
+Lignes texte courant (filtré) & 23~575 \\
 Langue dominante & AF \\
 Ratio langue secondaire (Lat.) & 35\% \\
 Période couverte & XIIIe siècle \\
@@ -819,5 +770,64 @@ Paulius Micikevicius, Sharan Narang, Jon Alben, et al.
 \newblock {\em arXiv preprint arXiv:1710.03740}, 2017.
 
 \end{thebibliography}
+
+\clearpage
+\onecolumn
+
+\begin{appendices}
+\section{Tableau détaillé des manuscrits étudiés}
+\label{sec:annexe_manuscrits}
+
+Le tableau ci-dessous présente l'ensemble des manuscrits du corpus de l'étude (brut avant équilibrage), classés par corpus d'origine, langue, siècle et type d'écriture (script).
+
+\begin{table}[H]
+\fontsize{10}{11}\selectfont
+\centering
+\caption{Tableau des manuscrits et corpus HTR-United}
+\begin{tabular}{L{4cm}|C{1cm}|C{1cm}|C{3.5cm}|C{1cm}|C{4.5cm}}
+\toprule
+Cote / Shelfmark & Langue & Siècle & Script & Lignes & Corpus HTR-United \\
+\midrule
+BnF fr. 412 & AF & XIIIe & \textit{Gothic Textualis} & 6324 & CREMMA-Medieval \\
+Arsenal 3516 & AF & XIIIe & \textit{Gothic Textualis} & 1991 & CREMMA-Medieval \\
+Cologny, Bodmer 168 & AF & XIIIe & \textit{Gothic Textualis} & 1976 & CREMMA-Medieval \\
+BnF fr. 24428 & AF & XIIIe & \textit{Gothic Textualis} & 1328 & CREMMA-Medieval \\
+BnF fr. 25516 & AF & XIIIe & \textit{Gothic Textualis} & 717 & CREMMA-Medieval \\
+BnF fr. 844 & AF & XIIIe & \textit{Gothic Textualis} & 224 & CREMMA-Medieval \\
+BnF fr. 17229 & AF & XIIIe & \textit{Gothic Textualis} & 164 & CREMMA-Medieval \\
+BnF fr. 13496 & AF & XIIIe & \textit{Gothic Textualis} & 161 & CREMMA-Medieval \\
+CLM 13027 & Lat. & XIIIe & \textit{S. Textualis Libraria} & 616 & CREMMA-Medieval-LAT \\
+MsWettF 15 & Lat. & XIIIe & \textit{Textualis Libraria} & 455 & CREMMA-Medieval-LAT \\
+BnF lat. 16195 & Lat. & XIIIe & \textit{Semitextualis Currens} & 449 & CREMMA-Medieval-LAT \\
+CCCC MSS 236 & Lat. & XIIIe & \textit{Textualis Libraria} & 192 & CREMMA-Medieval-LAT \\
+BnF NAF 23686 & AF & XIIIe & \textit{Gothic Textualis} & 424 & HTRomance Medieval FR \\
+BnF fr. 1443 & AF & XIIIe & \textit{Gothic Textualis} & 418 & HTRomance Medieval FR \\
+BnF fr. 1553 & AF & XIIIe & \textit{Gothic Textualis} & 506 & HTRomance Medieval FR \\
+BnF fr. 1635 & AF & XIIIe & \textit{Gothic Textualis} & 217 & HTRomance Medieval FR \\
+BnF fr. 12581 & AF & XIIIe & \textit{Gothic Textualis} & 306 & HTRomance Medieval FR \\
+BnF fr. 1669 & AF & XIIIe & \textit{Gothic Textualis} & 484 & HTRomance Medieval FR \\
+BnF fr. 104 & AF & XIIIe & \textit{Gothic Textualis} & 404 & HTRomance Medieval FR \\
+BnF fr. 2168 & AF & XIIIe & \textit{Gothic Textualis} & 370 & HTRomance Medieval FR \\
+BnF fr. 1450 & AF & XIIIe & \textit{Gothic Textualis} & 711 & HTRomance Medieval FR \\
+BnF fr. 23117 & AF & XIIIe & \textit{Gothic Textualis} & 736 & HTRomance Medieval FR \\
+BnF fr. 6447 & AF & XIIIe & \textit{Gothic Textualis} & 383 & HTRomance Medieval FR \\
+BnF fr. 2173 & AF & XIIIe & \textit{Gothic Textualis} & 240 & HTRomance Medieval FR \\
+BnF fr. 19152 & AF & XIIIe & \textit{Gothic Textualis} & 529 & HTRomance Medieval FR \\
+BnF fr. 12603 & AF & XIIIe & \textit{Gothic Textualis} & 442 & HTRomance Medieval FR \\
+BnF lat. 8001 & Lat. & XIIIe & \textit{Gothic Textualis} & 506 & HTRomance Medieval LAT \\
+BnF lat. 16085 & Lat. & XIIIe & \textit{Gothic Textualis} & 392 & HTRomance Medieval LAT \\
+BnF lat. 17903 & Lat. & XIIIe & \textit{Gothic Textualis} & 440 & HTRomance Medieval LAT \\
+BnF lat. 14354 & Lat. & XIIIe & \textit{Gothic Textualis} & 546 & HTRomance Medieval LAT \\
+BnF lat. 16204 & Lat. & XIIIe & \textit{Gothic Textualis} & 462 & HTRomance Medieval LAT \\
+BnF lat. 16657 & Lat. & XIIIe & \textit{Gothic Textualis} & 199 & HTRomance Medieval LAT \\
+BnF lat. 5657 & Lat. & XIIIe & \textit{Textualis Currens} & 152 & HTRomance Medieval LAT \\
+BnF lat. 10996 & Lat. & XIIIe & \textit{Textualis Currens} & 109 & HTRomance Medieval LAT \\
+\midrule
+\textbf{TOTAL (brut avant équilibrage)} & & & & \textbf{23575} & \textbf{4 corpus} \\ 
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{appendices}
 
 \end{document}
