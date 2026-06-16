@@ -5,6 +5,8 @@ __pycache__/
 
 # Dataset
 data
+dictionnaire_data
+dictionnaire_ancien_francais.json
 *.pdf
 # C extensions
 *.so
