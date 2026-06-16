@@ -2,7 +2,7 @@
 
 Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur le corpus CREMMA Medieval (ancien français + latin, XIIIe–XVe siècle). Fine-tuning du modèle `cremma-generic` avec Kraken 7.x sur GPU cloud (Kaggle / Colab).
 
-**Meilleur CER obtenu à ce jour : 26.3% (Run 4 — Kaggle T4)**  
+**Meilleur CER obtenu à ce jour : 26.3% (Run 4 — Kaggle T4) — vs 44% pour le modèle de base sans fine-tuning (−18 pts)**  
 **Objectif : CER < 15% (validation) → CER < 8% (excellence)**  
 **Modèles publiés : [legb/htr-cremma-medieval](https://huggingface.co/legb/htr-cremma-medieval)**
 
@@ -168,6 +168,7 @@ ketos train \
 | **4** | **13 juin** | **Kaggle T4 x2** | **binarisé mode 1** | **cremma_generic** | **26.3%** | **37** | **Meilleur run** |
 | 5 | 14 juin | Kaggle T4 x2 | binarisé mode 1 | cremma-generic-1.0.1 | 26.3% | 37 | Identique Run 4 |
 | 6 | 14 juin | Colab T4 | binarisé mode 1 | cremma_generic | ~26.5% | 14 | Aborté — mismatch confirmé |
+| **7 (Exp 3)** | **15 juin** | **Kaggle T4 x2** | **`train_clean.arrow` — grayscale mode L (vérifié)** | **cremma-generic-1.0.1** | **26.4%** | **32+** | **Grayscale confirmé mais plafond persiste — cause ≠ mismatch L/1** |
 
 ### Courbe d'apprentissage — Run 4 (meilleure run)
 
@@ -183,18 +184,28 @@ ketos train \
 
 ### Diagnostic : le plafond à ~74%
 
-Toutes les runs 1–6 utilisent des données **binarisées (mode 1)** alors que `cremma-generic` a été entraîné sur des images **grayscale (mode L)**. Ce mismatch crée un plafond artificiel.
+**Le fine-tuning fonctionne (44% → 26%).** Évalué le 15 juin : `cremma-generic-1.0.1` sans fine-tuning donne **CER 44%** sur le dev ; après fine-tuning, **26%** — soit −18 pts. Le « plateau » à 26% n'est donc pas un échec, c'est la limite atteinte par le corpus actuel.
 
-Preuves convergentes :
-- `WARNING training set contains mode 1 data` présent dès la Run 2
-- Changer de modèle de base (Run 5 vs Run 4) : même CER 26.3%, même stage optimal 27
-- `train.arrow` S3 s'avère binarisé malgré vérification initiale
+**Hypothèse initiale (mismatch L/1) — RÉFUTÉE.** On a longtemps cru que le plafond venait de données binarisées (mode 1). Exp 3 (Run 7) a testé un Arrow grayscale vérifié et **a donné le même 26.4%** : le grayscale n'était pas le frein.
+
+Vérification décisive (15 juin) : lecture du mode PIL de `train_clean.arrow` / `dev_clean.arrow` → **100% mode L** (508 et 529 lignes échantillonnées). Recompilés depuis `preprocessed_grayscale/`, ils donnent le **SHA identique** aux fichiers S3 → ces Arrow étaient déjà grayscale lors d'Exp 3.
+
+Conséquences :
+- Le `WARNING training set contains mode 1 data` de kraken est un **faux signal** : il ne décrit pas le mode réel des images du dataset.
+- Le plafond ~26% a une **autre cause**. Pistes :
+  - **Scheduler LR non déclenché** : Exp 3 logguait `ReduceLROnPlateau conditioned on metric val_metric which is not available` → le LR n'a jamais été réduit (fine-tuning à LR constant).
+  - **Corpus limité** (213 docs / ~18 800 lignes) : possible plafond de données.
+  - **Alphabet** : 26 caractères train-only hors accuracy officielle.
+  - Comparer au CER du modèle de base **sans** fine-tuning (le fine-tuning apporte-t-il quelque chose ?).
+
+> Note : les images `preprocessed/` se sont avérées **RGB** (et non mode 1) ; c'est `ketos compile` qui binarise en interne toute image non-L. Les Arrow grayscale ont été compilés depuis `preprocessed_grayscale/` (mode L).
 
 ### Expériences planifiées
 
 | # | Hypothèse | Données | Impact estimé | Statut |
 |---|-----------|---------|:-------------:|--------|
-| Exp 3 | Arrow grayscale filtré (`train_clean.arrow`) | mode L vérifié localement | **+10–15 pts CER** | Données prêtes |
+| Exp 3 | Arrow grayscale filtré (`train_clean.arrow`) | mode L vérifié (PIL) | **+10–15 pts CER** | ✅ Exécuté — grayscale confirmé, **mais pas de gain** (CER 26.4%). Hypothèse L/1 réfutée |
+| Exp 3-bis | Corriger le scheduler LR (`val_metric`) + relancer sur Arrow grayscale | idem, mode L | percer le plateau | À faire — piste prioritaire |
 | Exp 4 | TrOCR fine-tuning (LoRA r=8) vs Kraken | même corpus | comparaison | Planifiée |
 
 ### Modèles publiés (HuggingFace)
@@ -204,7 +215,7 @@ Preuves convergentes :
 | Fichier | Expérience | CER | Commit |
 |---------|-----------|:---:|--------|
 | `exp2_binarise_20260613.safetensors` | Baseline binarisée (Run 4/5) | 26.3% | `99843b75` |
-| `exp3_clean_arrow_20260613.safetensors` | Arrow filtré grayscale | en cours | `5e43b1b1` |
+| `exp3_clean_arrow_20260613.safetensors` | Arrow filtré grayscale (mode L confirmé) | 26.4% — pas de gain vs baseline | `5e43b1b1` |
 
 ---
 
@@ -227,13 +238,15 @@ Preuves convergentes :
 | Ancien français (`fro`) | *n* | *TODO* | *TODO* |
 | Latin (`lat`) | *n* | *TODO* | *TODO* |
 
-### Comparaison baseline (à compléter)
+### Comparaison baseline
 
 | Modèle | CER (val) | Delta vs baseline |
 |--------|:---------:|:-----------------:|
-| `cremma-generic-1.0.1` sans fine-tuning | *TODO* | — |
-| Run 4 (fine-tuning binarisé) | 26.3% | *TODO* |
-| Exp 3 (fine-tuning grayscale filtré) | *TODO* | *TODO* |
+| `cremma-generic-1.0.1` sans fine-tuning | **44%** | — |
+| Run 4 (fine-tuning, grayscale) | 26.3% | **−17.7 pts** |
+| Exp 3 (fine-tuning grayscale filtré) | 26.4% | **−17.6 pts** |
+
+> **Le fine-tuning fonctionne** : il fait passer la CER de 44% à ~26% (−40% d'erreurs relatif). Le « plateau » à 26% n'est pas un échec de l'entraînement mais une **limite atteinte** — probablement un plafond de diversité du corpus (21 manuscrits, BnF_fr_412 ≈ 31% du train), pas un bug. Les leviers restants pour descendre sous 26% : (1) corriger le scheduler LR, (2) diversifier le corpus, (3) auditer la métrique (26 caractères train-only exclus de l'accuracy).
 
 ### Analyse des erreurs (à compléter)
 
@@ -255,8 +268,8 @@ Classes d'erreurs prioritaires à analyser :
 
 ### Limitations identifiées
 
-1. **Mismatch mode L/1** — toutes les runs 1–6 sur données binarisées → plafond ~74% artificiel. Exp 3 est le premier vrai test grayscale.
-2. **`train.arrow` S3 non-grayscale** — malgré la vérification initiale, le warning Kraken confirme que l'Arrow S3 est binarisé. Seul `train_clean.arrow` compilé localement le 14 juin est vérifié mode L.
+1. **Plafond ~74% non expliqué** — l'hypothèse du mismatch L/1 est réfutée (Exp 3 sur grayscale vérifié plafonne pareil). Cause probable : scheduler LR non déclenché (`val_metric not available`), corpus limité, ou apport réel du fine-tuning à vérifier. À investiguer en Exp 3-bis.
+2. **Le warning kraken `mode 1 data` est trompeur** — il est apparu sur un Arrow 100% mode L (vérifié par lecture PIL : `train_clean.arrow` 508/508, `dev_clean.arrow` 529/529). Ne pas s'y fier comme indicateur du mode du dataset. La **vérification fiable** est la lecture du mode PIL des images de l'Arrow — désormais intégrée comme garde-fou dans `compile_arrow.py` (refus d'upload si mode ≠ L).
 3. **Corpus limité** — 213 documents train, ~18 769 lignes après filtrage. Sous-représentation de certains scribes et du XVe siècle.
 4. **22 caractères absents** — présents dans le train set mais absents de l'alphabet du modèle de base. Gérés par `--resize union` mais non comptabilisés dans l'accuracy officielle.
 5. **Biais linguistique** — majoritairement ancien français parisien, couverture latine sous-représentée.
@@ -264,7 +277,7 @@ Classes d'erreurs prioritaires à analyser :
 
 ### Prochaines étapes
 
-- Exp 3 : valider l'hypothèse grayscale avec `train_clean.arrow`
+- ~~Exp 3 : valider l'hypothèse grayscale~~ → **fait, grayscale confirmé, mais hypothèse L/1 réfutée**. **Exp 3-bis** : corriger le câblage de `val_metric` (pour que le scheduler LR agisse), comparer au CER du modèle de base sans fine-tuning, puis relancer
 - Évaluation sur le set de test scellé (3 documents)
 - Analyse qualitative des erreurs différentielles Exp 3 vs Run 4
 - Exp 4 (bonus) : comparaison TrOCR LoRA vs Kraken, test de McNemar
