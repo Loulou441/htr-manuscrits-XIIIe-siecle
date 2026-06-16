@@ -5,7 +5,7 @@ __pycache__/
 
 # Dataset
 data
-
+*.pdf
 # C extensions
 *.so
 

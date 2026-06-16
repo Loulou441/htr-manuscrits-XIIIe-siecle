@@ -1,4 +1,7 @@
+import hashlib
+import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -6,6 +9,81 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 import streamlit as st
 from PIL import Image
+
+PREDICTIONS_DIR = Path("data/predictions")
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def build_data_contract(
+    image_bytes: bytes,
+    image_filename: str,
+    preds: list,
+    model_name: str,
+    confidence_threshold: float = 0.9,
+) -> dict:
+    """Build an HTR data contract JSON from Kraken predictions."""
+    doc_id = Path(image_filename).stem + "_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    lines = []
+    for i, p in enumerate(preds, start=1):
+        text = p.prediction or ""
+        char_confs = list(p.confidences) if p.confidences else []
+        confidence = sum(char_confs) / len(char_confs) if char_confs else 0.0
+
+        import statistics
+        char_std = statistics.pstdev(char_confs) if len(char_confs) > 1 else 0.0
+        needs_review = confidence < confidence_threshold or char_std > 0.2
+
+        polygon = []
+        if hasattr(p, "cuts") and p.cuts:
+            try:
+                polygon = [[int(x), int(y)] for x, y in p.cuts]
+            except Exception:
+                polygon = []
+
+        lines.append({
+            "line_id": f"{doc_id}_l{i:03d}",
+            "text": text,
+            "confidence": round(confidence, 4),
+            "char_confidences": [round(c, 4) for c in char_confs],
+            "candidates": None,
+            "needs_review": needs_review,
+            "polygon": polygon,
+            "reading_order": i,
+        })
+
+    return {
+        "document_id": doc_id,
+        "metadata": {
+            "source": image_filename,
+            "century_estimate": "XIII",
+            "document_type": "unknown",
+            "scan_quality": "unknown",
+            "sha256": _sha256_bytes(image_bytes),
+            "model": model_name,
+            "produced_at": datetime.now().isoformat(timespec="seconds"),
+        },
+        "pages": [
+            {
+                "page_id": "p001",
+                "image_path": image_filename,
+                "lines": lines,
+            }
+        ],
+    }
+
+
+def save_data_contract(contract: dict) -> Path:
+    """Save data contract JSON to data/predictions/ and return the path."""
+    PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = PREDICTIONS_DIR / f"{contract['document_id']}.json"
+    out_path.write_text(
+        json.dumps(contract, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return out_path
 
 HF_REPO = "legb/htr-cremma-medieval"
 
@@ -137,6 +215,17 @@ if uploaded:
                 if lines_text:
                     st.success(f"{len(lines_text)} ligne(s) transcrite(s)")
 
+                    # Export automatique data contract
+                    image_bytes = uploaded.getvalue()
+                    contract = build_data_contract(
+                        image_bytes=image_bytes,
+                        image_filename=uploaded.name,
+                        preds=preds,
+                        model_name=meta["filename"],
+                    )
+                    contract_path = save_data_contract(contract)
+                    st.info(f"Data contract sauvegardé : `{contract_path}`")
+
                     # Métriques de l'inférence
                     col1, col2, col3 = st.columns(3)
                     col1.metric("Lignes transcrites", len(lines_text))
@@ -163,6 +252,12 @@ if uploaded:
                         data="\n".join(lines_text),
                         file_name="transcription.txt",
                         mime="text/plain",
+                    )
+                    st.download_button(
+                        label="Télécharger le data contract (.json)",
+                        data=json.dumps(contract, ensure_ascii=False, indent=2),
+                        file_name=f"{contract['document_id']}.json",
+                        mime="application/json",
                     )
                 else:
                     st.warning("Lignes détectées mais aucun texte transcrit.")

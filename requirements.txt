@@ -8,3 +8,5 @@ boto3>=1.26
 sagemaker>=2.0
 huggingface_hub>=0.23
 streamlit>=1.35
+jsonschema>=4.21
+pytest>=8.0

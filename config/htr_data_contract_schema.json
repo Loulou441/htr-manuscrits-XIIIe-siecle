@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://htr-cremma-medieval-2026/schemas/htr_data_contract_schema.json",
+  "title": "HTR Data Contract",
+  "type": "object",
+  "required": ["document_id", "metadata", "pages"],
+  "properties": {
+    "document_id": {"type": "string", "minLength": 1},
+    "metadata": {
+      "type": "object",
+      "required": ["source", "century_estimate", "document_type", "sha256"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "century_estimate": {"type": "string", "minLength": 1},
+        "document_type": {"type": "string", "minLength": 1},
+        "scan_quality": {"type": "string"},
+        "sha256": {"type": "string", "minLength": 8}
+      },
+      "additionalProperties": true
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["page_id", "image_path", "lines"],
+        "properties": {
+          "page_id": {"type": "string", "minLength": 1},
+          "image_path": {"type": "string", "minLength": 1},
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "line_id",
+                "text",
+                "confidence",
+                "char_confidences",
+                "needs_review"
+              ],
+              "properties": {
+                "line_id": {"type": "string", "minLength": 1},
+                "text": {"type": "string"},
+                "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                "char_confidences": {
+                  "type": "array",
+                  "items": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+                },
+                "candidates": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["position", "options"],
+                      "properties": {
+                        "position": {"type": "integer", "minimum": 0},
+                        "options": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {"type": "string", "minLength": 1}
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["position", "options"],
+                        "properties": {
+                          "position": {"type": "integer", "minimum": 0},
+                          "options": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {"type": "string", "minLength": 1}
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  ]
+                },
+                "needs_review": {"type": "boolean"},
+                "polygon": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "prefixItems": [
+                      {"type": "number"},
+                      {"type": "number"}
+                    ],
+                    "items": false
+                  }
+                },
+                "reading_order": {"type": "integer", "minimum": 1}
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

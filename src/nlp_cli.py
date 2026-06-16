@@ -1,0 +1,230 @@
+"""CLI to execute NLP workflow"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from pathlib import Path
+
+from cer_utils import cer
+from confidence_correction import ConfidenceGuidedCorrector
+from htr_data_contract import (
+    compute_eda,
+    export_review_csv,
+    load_json,
+    save_json,
+    seal_test_set,
+    split_review_buckets,
+    stratified_split_records,
+    validate_contract,
+)
+from normalization_rules import MedievalFrenchNormalizer
+
+
+DEFAULT_SCHEMA = "config/htr_data_contract_schema.json"
+DEFAULT_ABBR = "data/abbreviations/medieval_abbreviations.json"
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    contract = load_json(args.input)
+    schema = load_json(args.schema)
+    errors = validate_contract(contract, schema)
+    if errors:
+        for e in errors:
+            print(f"[ERROR] {e}")
+        return 1
+    print("Validation OK: no schema or logical errors found.")
+    return 0
+
+
+def cmd_eda(args: argparse.Namespace) -> int:
+    contract = load_json(args.input)
+    metrics = compute_eda(contract)
+    output = json.dumps(metrics, ensure_ascii=False, indent=2)
+    if args.output:
+        Path(args.output).write_text(output + "\n", encoding="utf-8")
+    print(output)
+    return 0
+
+
+def cmd_review_queue(args: argparse.Namespace) -> int:
+    contract = load_json(args.input)
+    buckets = split_review_buckets(
+        contract,
+        direct_threshold=args.direct_threshold,
+        exclude_threshold=args.exclude_threshold,
+        char_std_threshold=args.char_std_threshold,
+    )
+
+    export_review_csv(buckets["review"], args.csv_output)
+    Path(args.json_output).write_text(
+        json.dumps(buckets, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    print(f"Direct : {len(buckets['direct'])}")
+    print(f"Review : {len(buckets['review'])}")
+    print(f"Exclude: {len(buckets['exclude'])}")
+    print(f"CSV review queue: {args.csv_output}")
+    return 0
+
+
+def cmd_normalize(args: argparse.Namespace) -> int:
+    normalizer = MedievalFrenchNormalizer.from_json(args.abbreviations)
+
+    if args.text:
+        print(normalizer.normalize(args.text))
+        return 0
+
+    rows = []
+    with open(args.csv_input, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            source = row.get(args.source_col, "")
+            row[args.output_col] = normalizer.normalize(source)
+            rows.append(row)
+
+    with open(args.csv_output, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys() if rows else [args.source_col, args.output_col])
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+    print(f"Normalized CSV written to: {args.csv_output}")
+    return 0
+
+
+def cmd_ablation(args: argparse.Namespace) -> int:
+    rows = []
+    with open(args.csv_input, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+
+    if not rows:
+        print("No rows in CSV.")
+        return 1
+
+    all_on = MedievalFrenchNormalizer.from_json(args.abbreviations)
+
+    before = 0.0
+    after = 0.0
+    for row in rows[: args.limit]:
+        ref = row[args.reference_col]
+        src = row[args.hypothesis_col]
+        before += cer(ref, src)
+        after += cer(ref, all_on.normalize(src))
+
+    n = min(len(rows), args.limit)
+    before /= n
+    after /= n
+
+    print(f"CER before: {before:.4f}")
+    print(f"CER after : {after:.4f}")
+    print(f"Gain      : {before - after:.4f}")
+    return 0
+
+
+def cmd_correct(args: argparse.Namespace) -> int:
+    contract = load_json(args.input)
+    corrector = ConfidenceGuidedCorrector(threshold=args.threshold)
+    events = corrector.apply_to_contract(contract, log_path=args.log_output)
+    save_json(contract, args.output)
+
+    print(f"Corrections applied: {len(events)}")
+    print(f"Updated contract   : {args.output}")
+    print(f"Correction log     : {args.log_output}")
+    return 0
+
+
+def cmd_split(args: argparse.Namespace) -> int:
+    records = json.loads(Path(args.records).read_text(encoding="utf-8"))
+    split = stratified_split_records(records, train_ratio=args.train_ratio, val_ratio=args.val_ratio, seed=args.seed)
+
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for name in ("train", "val", "test"):
+        Path(out_dir / f"{name}.json").write_text(
+            json.dumps(split[name], ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    digest = seal_test_set(
+        split["test"],
+        out_dir / "test_sealed.json",
+        out_dir / "test_set.sha256",
+    )
+
+    print(f"train={len(split['train'])} val={len(split['val'])} test={len(split['test'])}")
+    print(f"Test set SHA-256: {digest}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Cours 1 - Day-1 NLP workflow")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("validate", help="Validate HTR data contract against schema")
+    p.add_argument("--input", required=True)
+    p.add_argument("--schema", default=DEFAULT_SCHEMA)
+    p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("eda", help="Compute EDA metrics from contract")
+    p.add_argument("--input", required=True)
+    p.add_argument("--output")
+    p.set_defaults(func=cmd_eda)
+
+    p = sub.add_parser("review-queue", help="Build triage buckets and review CSV")
+    p.add_argument("--input", required=True)
+    p.add_argument("--csv-output", default="data/review/review_queue.csv")
+    p.add_argument("--json-output", default="data/review/review_buckets.json")
+    p.add_argument("--direct-threshold", type=float, default=0.9)
+    p.add_argument("--exclude-threshold", type=float, default=0.6)
+    p.add_argument("--char-std-threshold", type=float, default=0.2)
+    p.set_defaults(func=cmd_review_queue)
+
+    p = sub.add_parser("normalize", help="Normalize text via rule-based normalizer")
+    p.add_argument("--abbreviations", default=DEFAULT_ABBR)
+    p.add_argument("--text")
+    p.add_argument("--csv-input")
+    p.add_argument("--csv-output", default="data/normalized/normalized.csv")
+    p.add_argument("--source-col", default="text")
+    p.add_argument("--output-col", default="text_normalized")
+    p.set_defaults(func=cmd_normalize)
+
+    p = sub.add_parser("ablation", help="Compute CER before/after normalization")
+    p.add_argument("--csv-input", required=True)
+    p.add_argument("--reference-col", default="reference")
+    p.add_argument("--hypothesis-col", default="text")
+    p.add_argument("--abbreviations", default=DEFAULT_ABBR)
+    p.add_argument("--limit", type=int, default=200)
+    p.set_defaults(func=cmd_ablation)
+
+    p = sub.add_parser("correct", help="Apply confidence-guided corrections")
+    p.add_argument("--input", required=True)
+    p.add_argument("--output", default="data/contracts/contract_corrected.json")
+    p.add_argument("--log-output", default="data/review/correction_log.jsonl")
+    p.add_argument("--threshold", type=float, default=0.7)
+    p.set_defaults(func=cmd_correct)
+
+    p = sub.add_parser("split", help="Create stratified split and seal test set")
+    p.add_argument("--records", required=True, help="JSON array with century_estimate and document_type")
+    p.add_argument("--output-dir", default="data/splits_nlp")
+    p.add_argument("--train-ratio", type=float, default=0.8)
+    p.add_argument("--val-ratio", type=float, default=0.1)
+    p.add_argument("--seed", type=int, default=67)
+    p.set_defaults(func=cmd_split)
+
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
