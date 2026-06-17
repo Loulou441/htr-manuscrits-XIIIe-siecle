@@ -1,4 +1,5 @@
-"""Day-1 NLP utilities for HTR data contracts: validation, EDA, review queue, split sealing."""
+"""NLP utilities for HTR data contracts: 
+validation, EDA, review queue, split sealing."""
 
 from __future__ import annotations
 
@@ -13,7 +14,18 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 
-ABBREVIATION_MARKERS = {"~", "ꝑ", "ꝗ", "ꝓ", "ꝙ"}
+ABBREVIATION_MARKERS = {"~", "⁊", "ꝑ", "ꝗ", "ꝓ", "ꝙ"}
+
+
+def is_valid_polygon(polygon: object) -> bool:
+    if not isinstance(polygon, list):
+        return False
+    for point in polygon:
+        if not isinstance(point, list) or len(point) != 2:
+            return False
+        if not all(isinstance(coord, (int, float)) for coord in point):
+            return False
+    return True
 
 
 def load_json(path: str | Path) -> dict:
@@ -44,6 +56,15 @@ def validate_contract(contract: dict, schema: dict) -> list[str]:
                         f"logic:{line.get('line_id', '<unknown>')}: char_confidences length ({len(confs)}) != len(text) ({len(text)})"
                     )
 
+            if "polygon" not in line:
+                errors.append(
+                    f"schema:{line.get('line_id', '<unknown>')}: missing polygon field"
+                )
+            elif not is_valid_polygon(line["polygon"]):
+                errors.append(
+                    f"logic:{line.get('line_id', '<unknown>')}: polygon must be an array of [x, y] points"
+                )
+
     return errors
 
 
@@ -62,11 +83,29 @@ def compute_eda(contract: dict) -> dict:
     needs_review_count = 0
     abbr_count = 0
     n_lines = 0
+    confidence_bins = {
+        "0.0-0.6": 0,
+        "0.6-0.7": 0,
+        "0.7-0.8": 0,
+        "0.8-0.9": 0,
+        "0.9-1.0": 0,
+    }
 
     for _, _, _, line in iter_lines(contract):
         n_lines += 1
         conf = float(line.get("confidence", 0.0))
         confidences.append(conf)
+
+        if conf < 0.6:
+            confidence_bins["0.0-0.6"] += 1
+        elif conf < 0.7:
+            confidence_bins["0.6-0.7"] += 1
+        elif conf < 0.8:
+            confidence_bins["0.7-0.8"] += 1
+        elif conf < 0.9:
+            confidence_bins["0.8-0.9"] += 1
+        else:
+            confidence_bins["0.9-1.0"] += 1
 
         text = line.get("text", "")
         lengths.append(len(text))
@@ -86,8 +125,11 @@ def compute_eda(contract: dict) -> dict:
             "needs_review_rate": 0.0,
             "abbr_per_line": 0.0,
             "short_line_rate_lt_10": 0.0,
+            "confidence_quartiles": {"q1": 0.0, "q2": 0.0, "q3": 0.0},
+            "confidence_bins": confidence_bins,
         }
 
+    quartiles = statistics.quantiles(confidences, n=4, method="inclusive")
     short_rate = sum(1 for x in lengths if x < 10) / n_lines
     return {
         "n_lines": n_lines,
@@ -96,6 +138,12 @@ def compute_eda(contract: dict) -> dict:
         "needs_review_rate": needs_review_count / n_lines,
         "abbr_per_line": abbr_count / n_lines,
         "short_line_rate_lt_10": short_rate,
+        "confidence_quartiles": {
+            "q1": quartiles[0],
+            "q2": quartiles[1],
+            "q3": quartiles[2],
+        },
+        "confidence_bins": confidence_bins,
     }
 
 

@@ -29,3 +29,16 @@ def cer(reference: str, hypothesis: str) -> float:
     """Compute CER as edit_distance / max(1, len(reference))."""
     denom = max(1, len(reference))
     return _levenshtein_distance(reference, hypothesis) / denom
+
+
+def average_pairwise_cer(texts: list[str]) -> float:
+    """Compute the average pairwise CER for a set of transcription variants."""
+    if len(texts) < 2:
+        return 0.0
+    total = 0.0
+    count = 0
+    for i in range(len(texts)):
+        for j in range(i + 1, len(texts)):
+            total += cer(texts[i], texts[j])
+            count += 1
+    return total / count if count else 0.0

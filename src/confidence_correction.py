@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
-
+import transformers
 
 class VariantScorer(Protocol):
     def score(self, text: str, position: int) -> float:
@@ -14,7 +14,7 @@ class VariantScorer(Protocol):
 
 
 class HeuristicVariantScorer:
-    """Simple fallback scorer favoring vowel/consonant continuity and word chars."""
+    """Simple fallback scorer favoring letter continuity and vowel plausibility."""
 
     def score(self, text: str, position: int) -> float:
         score = 0.0
@@ -31,6 +31,65 @@ class HeuristicVariantScorer:
         return score
 
 
+class MaskedLMVariantScorer:
+    """Masked language model scorer using an MLM to select the most probable token."""
+
+    def __init__(self, model_name: str = "almanach/camembert-base", device: str | int | None = None):
+        try:
+            from transformers import AutoModelForMaskedLM, AutoTokenizer
+        except ImportError as exc:
+            raise ImportError(
+                "transformers is required for MaskedLMVariantScorer. "
+                "Install it with `pip install transformers sentencepiece`."
+            ) from exc
+
+        try:
+            import torch
+        except ImportError as exc:
+            raise ImportError("torch is required for MaskedLMVariantScorer.") from exc
+
+        self.torch = torch
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForMaskedLM.from_pretrained(model_name)
+        if device is None or device == "auto":
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = str(device)
+        self.model.to(self.device)
+
+    def score(self, text: str, position: int) -> float:
+        if position < 0 or position >= len(text):
+            return float("-inf")
+
+        char = text[position]
+        if not char:
+            return float("-inf")
+
+        mask_token = self.tokenizer.mask_token
+        if mask_token is None:
+            return float("-inf")
+
+        masked_text = text[:position] + mask_token + text[position + 1 :]
+        inputs = self.tokenizer(masked_text, return_tensors="pt")
+        inputs = {name: tensor.to(self.device) for name, tensor in inputs.items()}
+
+        with self.torch.no_grad():
+            outputs = self.model(**inputs)
+
+        mask_positions = (inputs["input_ids"][0] == self.tokenizer.mask_token_id).nonzero(as_tuple=True)
+        if mask_positions[0].numel() != 1:
+            return float("-inf")
+
+        mask_index = mask_positions[0].item()
+        logits = outputs.logits[0, mask_index]
+        token_ids = self.tokenizer.encode(char, add_special_tokens=False)
+        if len(token_ids) != 1:
+            return float("-inf")
+
+        log_probs = self.torch.log_softmax(logits, dim=-1)
+        return float(log_probs[token_ids[0]].item())
+
+
 @dataclass
 class CorrectionEvent:
     line_id: str
@@ -41,9 +100,18 @@ class CorrectionEvent:
 
 
 class ConfidenceGuidedCorrector:
-    def __init__(self, threshold: float = 0.7, scorer: VariantScorer | None = None):
+    def __init__(
+        self,
+        threshold: float = 0.7,
+        scorer: VariantScorer | None = None,
+        mlm_model: str | None = None,
+        device: str | int | None = None,
+    ):
         self.threshold = threshold
-        self.scorer = scorer or HeuristicVariantScorer()
+        if mlm_model is not None:
+            self.scorer = MaskedLMVariantScorer(model_name=mlm_model, device=device)
+        else:
+            self.scorer = scorer or HeuristicVariantScorer()
 
     def correct_line(self, line: dict) -> tuple[str, list[CorrectionEvent]]:
         text = line.get("text", "")
@@ -87,13 +155,15 @@ class ConfidenceGuidedCorrector:
                     best = candidate_char
 
             if best != corrected[pos]:
-                events.append(CorrectionEvent(
-                    line_id=line.get("line_id", ""),
-                    position=pos,
-                    old_char=corrected[pos],
-                    new_char=best,
-                    old_confidence=conf,
-                ))
+                events.append(
+                    CorrectionEvent(
+                        line_id=line.get("line_id", ""),
+                        position=pos,
+                        old_char=corrected[pos],
+                        new_char=best,
+                        old_confidence=conf,
+                    )
+                )
                 corrected = corrected[:pos] + best + corrected[pos + 1 :]
 
         return corrected, events
