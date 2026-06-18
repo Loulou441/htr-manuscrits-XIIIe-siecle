@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
@@ -180,7 +181,9 @@ class ConfidenceGuidedCorrector:
         if log_path is not None:
             path = Path(log_path)
             path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("w", encoding="utf-8") as f:
+            run_at = datetime.now(timezone.utc).isoformat()
+            with path.open("a", encoding="utf-8") as f:
                 for evt in events:
-                    f.write(json.dumps(evt.__dict__, ensure_ascii=False) + "\n")
+                    record = {"run_at": run_at, **evt.__dict__}
+                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
         return events

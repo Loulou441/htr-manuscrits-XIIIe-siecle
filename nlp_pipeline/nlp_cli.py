@@ -6,6 +6,7 @@ import argparse
 import csv
 import glob
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
@@ -31,6 +32,20 @@ from normalization_rules import (
 DEFAULT_SCHEMA = str(Path(__file__).parent / "htr_data_contract_schema.json")
 DEFAULT_ABBR = str(Path(__file__).parent / "medieval_abbreviations.json")
 DEFAULT_DICTIONARY = "data/dictionary/dictionnaire_ancien_francais.json"
+RUN_LOG_PATH = "data/review/nlp_cli_run_log.jsonl"
+
+
+def log_run(command: str, args: argparse.Namespace, returncode: int) -> None:
+    path = Path(RUN_LOG_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "run_at": datetime.now(timezone.utc).isoformat(),
+        "command": command,
+        "args": {k: v for k, v in vars(args).items() if k != "func"},
+        "returncode": returncode,
+    }
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def resolve_input_paths(input_path: str | Path) -> list[Path]:
@@ -505,7 +520,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    return int(args.func(args))
+    returncode = int(args.func(args))
+    log_run(args.command, args, returncode)
+    return returncode
 
 
 if __name__ == "__main__":
