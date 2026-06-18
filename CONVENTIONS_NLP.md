@@ -9,7 +9,9 @@ Les règles suivantes sont appliquées avant toute correction statistique/IA :
 - `Unicode NFC` : normalisation des formes combinées pour assurer une comparaison stable.
 - `lowercase` : conversion en minuscules pour réduire la variabilité graphique.
 - `u/v` : les variantes médiévales sont harmonisées selon le contexte (début de mot / voyelle suivante).
-- `i/j` : la lettre `i` est convertie en `j` lorsqu'elle précède une voyelle, comme dans les graphies moyen-français.
+  - **Exceptions** (corpus `nlp_pipeline/normalization_rules.py::_apply_uv_rule`) : le `u` des digrammes `qu`/`gu` (`que`, `qui`, `guerre`) et le `u` suivi de `i` (`lui`) ne sont jamais convertis en `v`, car ce ne sont pas des `u` consonantiques. Limite connue : ceci empêche aussi la conversion correcte de `deuient` → `devient` (faux négatif accepté, plus rare que les faux positifs corrigés).
+- `i/j` : la lettre `i` est convertie en `j` lorsqu'elle précède une voyelle autre que `e`, comme dans les graphies moyen-français.
+  - **Exception** (`_apply_ij_rule`) : le digramme `ie`/`ien`/`ier` (`bien`, `mie`, `biel`, `manjere`...) garde son `i` vocalique — aucun cas correct de `i`→`j` devant `e` n'a été observé sur ce corpus lors de l'audit du 2026-06-18.
 - `tilde nasal` : les abréviations nasales `a~`, `e~`, `o~` sont résolues en `an`, `en`, `on`.
 - table d'abréviations : une table JSON spécifique aux formes médiévales et latines du corpus est appliquée.
 
