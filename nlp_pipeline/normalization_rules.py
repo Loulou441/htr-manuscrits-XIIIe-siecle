@@ -34,12 +34,14 @@ class MedievalFrenchNormalizer:
 
     @staticmethod
     def from_json(path: str | Path, config: NormalizerConfig | None = None) -> "MedievalFrenchNormalizer":
+        """Build a normalizer from a JSON abbreviation table (e.g. medieval_abbreviations.json)."""
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError("Abbreviation table must be a JSON object")
         return MedievalFrenchNormalizer(abbreviations=data, config=config)
 
     def normalize(self, text: str) -> str:
+        """Apply NFC, lowercase, u/v, i/j, tilde expansion and the abbreviation table, in order."""
         out = text
         if self.config.apply_nfc:
             out = unicodedata.normalize("NFC", out)
@@ -56,6 +58,7 @@ class MedievalFrenchNormalizer:
         return out
 
     def _apply_abbreviation_table(self, text: str) -> str:
+        """Replace each known abbreviation by its expansion, longest keys first."""
         # Longest keys first to avoid partial replacement collisions.
         pairs = sorted(self.abbreviations.items(), key=lambda kv: len(kv[0]), reverse=True)
         out = text
@@ -64,6 +67,7 @@ class MedievalFrenchNormalizer:
         return out
 
     def _apply_uv_rule(self, text: str) -> str:
+        """Resolve medieval u/v graphical variants into their consonantal/vocalic modern form."""
         chars = list(text)
         for idx, ch in enumerate(chars):
             if ch not in {"u", "v"}:
@@ -73,6 +77,11 @@ class MedievalFrenchNormalizer:
             at_word_start = idx == 0 or not prev_c.isalpha()
             before_vowel = next_c in VOWELS
 
+            if prev_c in {"q", "g"} or next_c == "i":
+                # qu/gu digraphs (que, qui, guerre...) and u+i (lui, liu...)
+                # keep their vocalic u: not a true consonantal context.
+                continue
+
             if ch == "u" and (at_word_start or before_vowel):
                 chars[idx] = "v"
             elif ch == "v" and not (at_word_start or before_vowel):
@@ -80,16 +89,23 @@ class MedievalFrenchNormalizer:
         return "".join(chars)
 
     def _apply_ij_rule(self, text: str) -> str:
+        """Convert a vocalic i into its consonantal j form before a non-e vowel."""
         chars = list(text)
         for idx, ch in enumerate(chars):
             if ch != "i":
                 continue
             next_c = chars[idx + 1] if idx + 1 < len(chars) else ""
+
+            if next_c == "e":
+                # "ie"/"ien"/"ier" diphthongs (bien, fier, mie...) keep their vocalic i.
+                continue
+
             if next_c in VOWELS:
                 chars[idx] = "j"
         return "".join(chars)
 
     def _expand_tilde(self, text: str) -> str:
+        """Expand the medieval nasal tilde (precomposed or combining) into its vowel+n form."""
         out = text
         precomposed = {
             "ã": "an",
@@ -108,16 +124,19 @@ class MedievalFrenchNormalizer:
 
 
 def _contains_combining_mark(text: str) -> bool:
+    """Return True if text contains a Unicode combining mark (e.g. a floating tilde)."""
     return any(unicodedata.category(ch).startswith("M") for ch in text)
 
 
 def _is_suspicious_token(token: str) -> bool:
+    """Return True if token carries an abbreviation marker or a combining mark."""
     if any(ch in token for ch in ABBREVIATION_MARKERS):
         return True
     return _contains_combining_mark(token)
 
 
 def _load_lexicon_csv(path: str | Path) -> list[tuple[str, int]]:
+    """Parse a (word, count) lexicon CSV, skipping the header row."""
     rows: list[tuple[str, int]] = []
     p = Path(path)
     with p.open("r", encoding="utf-8", newline="") as f:
@@ -140,6 +159,7 @@ def _load_lexicon_csv(path: str | Path) -> list[tuple[str, int]]:
 
 
 def _build_word_counts_from_output_dir(output_dir: str | Path) -> list[tuple[str, int]]:
+    """Tokenize every line.text across HTR contracts in output_dir and count word frequencies."""
     from htr_data_contract import iter_lines, load_json
 
     counts: Counter = Counter()
@@ -156,6 +176,7 @@ def _build_word_counts_from_output_dir(output_dir: str | Path) -> list[tuple[str
 
 
 def _propose_normalization_suggestion(token: str, abbreviations: dict[str, str]) -> str | None:
+    """Suggest an expansion for a suspicious token not already in the abbreviation table."""
     if token in abbreviations:
         return None
     candidate = token
@@ -178,6 +199,7 @@ def _propose_normalization_suggestion(token: str, abbreviations: dict[str, str])
 
 
 def _load_dictionary(path: str | Path) -> dict[str, dict]:
+    """Load the Old French dictionary JSON (word -> {wiktionary_en, cltk_fr})."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("Dictionary must be a JSON object")
@@ -185,6 +207,7 @@ def _load_dictionary(path: str | Path) -> dict[str, dict]:
 
 
 def _is_known_word(token: str, dictionary: dict[str, dict]) -> bool:
+    """Return True if token has at least one non-empty definition in the dictionary."""
     entry = dictionary.get(token.lower())
     if entry is None:
         return False
@@ -225,6 +248,7 @@ def detect_normalization_candidates(
     top_n: int = 100,
     abbreviations: dict[str, str] | None = None,
 ) -> dict[str, object]:
+    """Surface the most frequent tokens carrying abbreviation markers, with expansion suggestions."""
     if lexicon_path is not None and Path(lexicon_path).exists():
         rows = _load_lexicon_csv(lexicon_path)
     elif output_dir is not None and Path(output_dir).exists():

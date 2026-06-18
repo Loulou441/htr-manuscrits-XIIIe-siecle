@@ -30,6 +30,24 @@ def test_uv_rule_toggle():
     assert normalizer.normalize("uero") == "uero"
 
 
+def test_uv_rule_keeps_qu_gu_and_ui_digraphs():
+    normalizer = MedievalFrenchNormalizer({})
+    assert normalizer.normalize("que") == "que"
+    assert normalizer.normalize("qui") == "qui"
+    assert normalizer.normalize("guerre") == "guerre"
+    assert normalizer.normalize("lui") == "lui"
+    # genuine u->v transformations still happen elsewhere in the word
+    assert normalizer.normalize("cheualier") == "chevalier"
+    assert normalizer.normalize("auant") == "avant"
+
+
+def test_ij_rule_keeps_ie_diphthong():
+    normalizer = MedievalFrenchNormalizer({})
+    assert normalizer.normalize("bien") == "bien"
+    assert normalizer.normalize("mie") == "mie"
+    assert normalizer.normalize("biel") == "biel"
+
+
 def test_detect_normalization_candidates_from_lexicon(tmp_path):
     csv_path = tmp_path / "lexicon.csv"
     csv_path.write_text("word, count\nq̃, 10\na~, 5\nfoo, 1\n", encoding="utf-8")
