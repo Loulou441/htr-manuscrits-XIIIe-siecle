@@ -48,6 +48,7 @@
                 },
                 "candidates": {
                   "oneOf": [
+                    {"type": "null"},
                     {
                       "type": "object",
                       "required": ["position", "options"],

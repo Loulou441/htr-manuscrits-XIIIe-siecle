@@ -21,11 +21,16 @@ from htr_data_contract import (
     stratified_split_records,
     validate_contract,
 )
-from normalization_rules import MedievalFrenchNormalizer, detect_normalization_candidates
+from normalization_rules import (
+    MedievalFrenchNormalizer,
+    detect_normalization_candidates,
+    find_lexical_errors,
+)
 
 
 DEFAULT_SCHEMA = str(Path(__file__).parent / "htr_data_contract_schema.json")
 DEFAULT_ABBR = str(Path(__file__).parent / "medieval_abbreviations.json")
+DEFAULT_DICTIONARY = "data/dictionary/dictionnaire_ancien_francais.json"
 
 
 def resolve_input_paths(input_path: str | Path) -> list[Path]:
@@ -344,6 +349,24 @@ def cmd_detect_normalization(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lexical_check(args: argparse.Namespace) -> int:
+    if not Path(args.dictionary).exists():
+        print(f"[ERROR] Dictionary not found: {args.dictionary}")
+        return 1
+
+    results = find_lexical_errors(
+        dictionary_path=args.dictionary,
+        lexicon_path=args.lexicon,
+        output_dir=args.output_dir,
+        top_n=args.top_n,
+    )
+    output = json.dumps(results, ensure_ascii=False, indent=2)
+    if args.output:
+        Path(args.output).write_text(output + "\n", encoding="utf-8")
+    print(output)
+    return 0
+
+
 def cmd_split(args: argparse.Namespace) -> int:
     records = json.loads(Path(args.records).read_text(encoding="utf-8"))
     split = stratified_split_records(records, train_ratio=args.train_ratio, val_ratio=args.val_ratio, seed=args.seed)
@@ -438,6 +461,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--abbreviations", default=DEFAULT_ABBR)
     p.add_argument("--output", help="Optional JSON file to write the candidate report")
     p.set_defaults(func=cmd_detect_normalization)
+
+    p = sub.add_parser(
+        "lexical-check",
+        help="Flag tokens absent from the Old French dictionary (real lexical errors, not just abbreviation markers)",
+    )
+    p.add_argument("--dictionary", default=DEFAULT_DICTIONARY, help="Path to dictionnaire_ancien_francais.json")
+    p.add_argument("--lexicon", help="Path to a lexicon CSV (e.g. data/lexique/lexicon.csv)")
+    p.add_argument("--output-dir", help="Path to a prediction output directory (e.g. data/nlp_output)")
+    p.add_argument("--top-n", type=int, default=50, help="Number of unknown tokens to report")
+    p.add_argument("--output", help="Optional JSON file to write the report")
+    p.set_defaults(func=cmd_lexical_check)
 
     p = sub.add_parser("correct", help="Apply confidence-guided corrections")
     p.add_argument("--input", required=True, help="Path to a JSON contract file or a directory containing JSON contracts")

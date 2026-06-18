@@ -10,6 +10,7 @@ from normalization_rules import (
     MedievalFrenchNormalizer,
     NormalizerConfig,
     detect_normalization_candidates,
+    find_lexical_errors,
 )
 
 
@@ -61,3 +62,19 @@ def test_detect_normalization_candidates_from_output_dir(tmp_path):
     results = detect_normalization_candidates(output_dir=str(output_dir), abbreviations={})
     assert results["total_tokens"] == 3
     assert any(item["token"] == "q̃" for item in results["top_suspicious"])
+
+
+def test_find_lexical_errors(tmp_path):
+    dictionary_path = tmp_path / "dictionary.json"
+    dictionary_path.write_text(
+        json.dumps({"foo": {"wiktionary_en": ["a word"], "cltk_fr": []}}),
+        encoding="utf-8",
+    )
+    csv_path = tmp_path / "lexicon.csv"
+    csv_path.write_text("word, count\nfoo, 10\nbarbarus, 5\n", encoding="utf-8")
+
+    results = find_lexical_errors(dictionary_path=str(dictionary_path), lexicon_path=str(csv_path))
+    assert results["total_tokens"] == 2
+    assert results["dictionary_size"] == 1
+    assert results["unknown_tokens"] == 1
+    assert results["top_unknown"][0]["token"] == "barbarus"

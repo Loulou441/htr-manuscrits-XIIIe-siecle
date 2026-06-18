@@ -177,6 +177,48 @@ def _propose_normalization_suggestion(token: str, abbreviations: dict[str, str])
     return None
 
 
+def _load_dictionary(path: str | Path) -> dict[str, dict]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Dictionary must be a JSON object")
+    return data
+
+
+def _is_known_word(token: str, dictionary: dict[str, dict]) -> bool:
+    entry = dictionary.get(token.lower())
+    if entry is None:
+        return False
+    return bool(entry.get("wiktionary_en")) or bool(entry.get("cltk_fr"))
+
+
+def find_lexical_errors(
+    dictionary_path: str | Path,
+    lexicon_path: str | Path | None = None,
+    output_dir: str | Path | None = None,
+    top_n: int = 100,
+) -> dict[str, object]:
+    """Flag normalized tokens that are absent from the Old French dictionary."""
+    if lexicon_path is not None and Path(lexicon_path).exists():
+        rows = _load_lexicon_csv(lexicon_path)
+    elif output_dir is not None and Path(output_dir).exists():
+        rows = _build_word_counts_from_output_dir(output_dir)
+    else:
+        raise ValueError("Either lexicon_path or output_dir must point to an existing path")
+
+    dictionary = _load_dictionary(dictionary_path)
+    total_counts = sum(count for _, count in rows)
+    unknown = [(word, count) for word, count in rows if word and not _is_known_word(word, dictionary)]
+    top_unknown = sorted(unknown, key=lambda kv: (-kv[1], kv[0]))[:top_n]
+
+    return {
+        "total_tokens": len(rows),
+        "total_counts": total_counts,
+        "dictionary_size": len(dictionary),
+        "unknown_tokens": len(unknown),
+        "top_unknown": [{"token": word, "count": count} for word, count in top_unknown],
+    }
+
+
 def detect_normalization_candidates(
     lexicon_path: str | Path | None = None,
     output_dir: str | Path | None = None,

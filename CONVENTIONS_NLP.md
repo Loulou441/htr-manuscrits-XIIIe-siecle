@@ -13,7 +13,7 @@ Les règles suivantes sont appliquées avant toute correction statistique/IA :
 - `tilde nasal` : les abréviations nasales `a~`, `e~`, `o~` sont résolues en `an`, `en`, `on`.
 - table d'abréviations : une table JSON spécifique aux formes médiévales et latines du corpus est appliquée.
 
-La table `data/abbreviations/medieval_abbreviations.json` contient les correspondances préférentielles :
+La table `nlp_pipeline/medieval_abbreviations.json` contient les correspondances préférentielles :
 - `q~` → `que`
 - `d~e` → `dame`
 - `⁊` → `et`
@@ -39,14 +39,19 @@ Le modèle par défaut est `almanach/camembert-base` en mode Masked Language Mod
 
 Parce qu'il n'existe pas de vérité terrain complète pour ces manuscrits, l'évaluation est comparative :
 
-- on mesure le CER entre versions différentes d'une même transcription,
-- on peut ainsi suivre l'évolution apportée par : sortie brute, normalisation par règles, correction guidée, etc.
+- on mesure le CER pairwise moyen entre plusieurs variantes d'une même ligne (`raw`, `text_normalized`, `corrected`) via `average_pairwise_cer` / la commande `relative-eval`,
+- on peut ainsi suivre la stabilité du pipeline : sortie brute, normalisation par règles, correction guidée, etc.
 
-Cette évaluation relative permet de juger des gains de qualité sans référence humaine absolue.
+**Ne pas utiliser `ablation` sans une vraie colonne de référence** (transcription validée manuellement, ex. XML ALTO/PageXML). Sans cela, `CER before` est trivialement 0 (comparaison du texte brut à lui-même) et `CER after` ne mesure que l'ampleur des changements introduits par la normalisation — pas un gain de qualité réel.
 
-## 4. Mise en œuvre dans le code
+## 4. Détection lexicale
 
-- `src/normalization_rules.py` implémente les règles déterministes.
-- `src/confidence_correction.py` implémente la correction guidée par confiance et par MLM.
-- `src/cer_utils.py` calcule le CER et les scores relatifs entre variantes.
-- `src/nlp_cli.py` expose les commandes `normalize`, `correct`, `ablation` et `relative-eval`.
+En complément de `detect-normalization` (qui repère des marqueurs typographiques d'abréviation : `~`, `⁊`, `ꝑ`...), la commande `lexical-check` vérifie si chaque token existe dans `dictionnaire_ancien_francais.json` (lexique Wiktionary ancien français + CLTK, ~55k entrées, téléchargé/construit par `nlp_pipeline/lexique/dictionary.py` puis synchronisé sur `s3://htr-cremma-medieval/nlp/dictionary/`). Les tokens absents du dictionnaire sont des candidats à une vraie erreur lexicale (mot mal transcrit, abréviation non résolue, terme hors corpus).
+
+## 5. Mise en œuvre dans le code
+
+- `nlp_pipeline/normalization_rules.py` implémente les règles déterministes, la détection de marqueurs d'abréviation (`detect_normalization_candidates`) et la détection lexicale par dictionnaire (`find_lexical_errors`).
+- `nlp_pipeline/confidence_correction.py` implémente la correction guidée par confiance et par MLM.
+- `nlp_pipeline/cer_utils.py` calcule le CER et les scores relatifs entre variantes.
+- `nlp_pipeline/lexique/dictionary.py` construit `dictionnaire_ancien_francais.json` à partir de Wiktionary et du lexique CLTK.
+- `nlp_pipeline/nlp_cli.py` expose les commandes `validate`, `eda`, `review-queue`, `normalize`, `normalize-contract`, `correct`, `ablation`, `relative-eval`, `detect-normalization`, `lexical-check` et `split`.
