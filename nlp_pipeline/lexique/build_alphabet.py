@@ -14,7 +14,7 @@ Colonnes du CSV : char, codepoint, count
   - count     : nombre d'occurrences cumulées
 
 Exemple :
-    python src/lexique/build_alphabet.py --input "data/predictions/btv1b55000507q_f325_20260616_114625.json"
+    python nlp_pipeline/lexique/build_alphabet.py --input "data/predictions/btv1b55000507q_f325_20260616_114625.json"
 """
 
 from __future__ import annotations

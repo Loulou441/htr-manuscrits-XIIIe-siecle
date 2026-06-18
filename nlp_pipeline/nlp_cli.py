@@ -24,8 +24,8 @@ from htr_data_contract import (
 from normalization_rules import MedievalFrenchNormalizer, detect_normalization_candidates
 
 
-DEFAULT_SCHEMA = "config/htr_data_contract_schema.json"
-DEFAULT_ABBR = "data/abbreviations/medieval_abbreviations.json"
+DEFAULT_SCHEMA = str(Path(__file__).parent / "htr_data_contract_schema.json")
+DEFAULT_ABBR = str(Path(__file__).parent / "medieval_abbreviations.json")
 
 
 def resolve_input_paths(input_path: str | Path) -> list[Path]:
