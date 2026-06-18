@@ -6,13 +6,35 @@ Le pipeline NLP repose sur un travail préalable de constitution et de validatio
 
 ### a) Extraction du nouveau dataset depuis le modèle (17/06, commit `5f55bc1`)
 
-Script `batch_transcribe.py` : à partir d'une liste de manuscrits du XIIIe siècle référencés sur Gallica/BnF (`Manuscrits XIII siecle.txt` — *Le Roman de Tristan*, *Le Roman de Troie*, *Tristan en prose*, *Le Brut* de Wace, etc.), le script :
+Script `batch_transcribe.py` : à partir d'une liste de manuscrits du XIIIe siècle référencés sur Gallica/BnF (`Manuscrits XIII siecle.txt`, 21 manuscrits listés), le script :
 1. extrait l'identifiant ARK de chaque manuscrit et télécharge les pages (haute résolution) depuis Gallica,
 2. charge le modèle HTR de référence (« Exp 2 — Baseline binarisée, CER 26.3% », via Kraken),
 3. segmente chaque page (Kraken BLLA) puis transcrit les lignes détectées (`rpred`),
 4. construit le data contract JSON pour chaque page et le sauvegarde dans `data/predictions/`.
 
-10 manuscrits × jusqu'à 10 pages chacun ont été traités par lot de cette façon.
+**16 manuscrits** ont effectivement été transcrits et sont présents dans `data/nlp_output/` (un sous-dossier par identifiant ARK) :
+
+| Identifiant ARK | Manuscrit | Source Gallica |
+|---|---|---|
+| `btv1b90589023` | Luce de Gast, *Le Roman de Tristan* | [gallica.bnf.fr/.../btv1b90589023](https://gallica.bnf.fr/ark:/12148/btv1b90589023/f64.item.zoom) |
+| `btv1b90595162` | Benoit de Sainte-Maure, *Le Roman de Troie* | [gallica.bnf.fr/.../btv1b90595162](https://gallica.bnf.fr/ark:/12148/btv1b90595162/f5.item) |
+| `btv1b10467098b` | Benoît de Sainte-Maure, *Le Roman de Troie* (2e exemplaire) | [gallica.bnf.fr/.../btv1b10467098b](https://gallica.bnf.fr/ark:/12148/btv1b10467098b/f10.item) |
+| `btv1b9065998b` | Latin 17177 | [gallica.bnf.fr/.../btv1b9065998b](https://gallica.bnf.fr/ark:/12148/btv1b9065998b/f4.item) |
+| `btv1b9059006z` | *Livre de jostice et de plet* | [gallica.bnf.fr/.../btv1b9059006z](https://gallica.bnf.fr/ark:/12148/btv1b9059006z/f3.item) |
+| `btv1b105600410` | Bréviaire des Dominicains (BM Toulouse) | [gallica.bnf.fr/.../btv1b105600410](https://gallica.bnf.fr/ark:/12148/btv1b105600410/f11.item) |
+| `btv1b9058848r` | *Tristan en prose* | [gallica.bnf.fr/.../btv1b9058848r](https://gallica.bnf.fr/ark:/12148/btv1b9058848r/f5.item) |
+| `btv1b9009629n` | Recueil de fabliaux, dits, contes en vers | [gallica.bnf.fr/.../btv1b9009629n](https://gallica.bnf.fr/ark:/12148/btv1b9009629n) |
+| `btv1b9059827w` | *Roman d'Eneas* — Wace, *Brut* | [gallica.bnf.fr/.../btv1b9059827w](https://gallica.bnf.fr/ark:/12148/btv1b9059827w) |
+| `btv1b10467099s` | *Roman d'Eneas* — Wace, *Brut* (2e exemplaire) | [gallica.bnf.fr/.../btv1b10467099s](https://gallica.bnf.fr/ark:/12148/btv1b10467099s) |
+| `btv1b52500695k` | *Chanson d'Aspremont* | [gallica.bnf.fr/.../btv1b52500695k](https://gallica.bnf.fr/ark:/12148/btv1b52500695k/f7.item) |
+| `btv1b100336071` | *Lancelot-Graal* (Lancelot en prose, Queste del Graal, Mort Artu) | [gallica.bnf.fr/.../btv1b100336071](https://gallica.bnf.fr/ark:/12148/btv1b100336071/f4.item) |
+| `btv1b8447872k` | Girart d'Amiens, *Meliacin ou le Cheval de fust* | [gallica.bnf.fr/.../btv1b8447872k](https://gallica.bnf.fr/ark:/12148/btv1b8447872k/f7.item) |
+| `btv1b9006878w` | Recueil de textes, Vie de saints | [gallica.bnf.fr/.../btv1b9006878w](https://gallica.bnf.fr/ark:/12148/btv1b9006878w) |
+| `btv1b100341529` | Notices généalogiques, familles de Périgord — Dossiers de Lespine XLVII | [gallica.bnf.fr/.../btv1b100341529](https://gallica.bnf.fr/ark:/12148/btv1b100341529) |
+| `btv1b90591336` | Estoire du Graal — Merlin en prose — Suite Vulgate | [gallica.bnf.fr/.../btv1b90591336](https://gallica.bnf.fr/ark:/12148/btv1b90591336/f8.item) |
+| `btv1b52520460z` | Fragments de romans de Chrétien de Troyes (fragments d'Annonay) | [gallica.bnf.fr/.../btv1b52520460z](https://gallica.bnf.fr/ark:/12148/btv1b52520460z) |
+
+5 manuscrits de la liste source (21 au total) n'ont pas été repris dans le dataset final : le *Chansonnier français / Bestiaire d'Amour de Richard de Fournival*, *Estoire du Graal — Merlin en prose — Suite Vulgate* (variante `btv1b9009473c`), *Recueil de fabliaux* (variante `btv1b55013464t`), et deux doublons de manuscrits déjà couverts par une autre cote.
 
 ### b) Correction / évaluation du dataset par rapport à une vérité terrain (17/06, commit `187674b`)
 
@@ -188,6 +210,83 @@ Deux mécanismes de détection complètent les règles, sans les remplacer :
 | `awscli` absent sur Kaggle | Échec de la cellule de sync S3 | `pip install awscli` ajouté |
 | Règles u/v et i/j trop larges | `que→qve`, `qui→qvi`, `lui→lvi`, `bien→bjen`, `mie→mje` (mots corrects cassés) | Exceptions `qu`/`gu`/`u+i` et `ie` — vérifié sur 30+ documents réels, puis confirmé sur les 129 documents du corpus complet (section 3.d) |
 
-## 6. Non commité actuellement
+## 6. Prochaines étapes envisagées
+
+- **Heuristique de substitution par fréquence** (idée, non démarrée) : aujourd'hui, `find_lexical_errors` et `detect_normalization_candidates` se limitent à *détecter* les tokens suspects/inconnus, sans choisir automatiquement de substitution. L'idée est d'ajouter une formule qui, pour chaque token suspect, calcule un score de vraisemblance par candidat de substitution à partir de sa fréquence dans le dictionnaire/lexique de référence :
+
+  ```
+  score(candidat) = fréquence(candidat) / Σ fréquences(tous les candidats pour ce token)
+  ```
+
+  Le candidat au score le plus élevé serait retenu automatiquement comme substitution proposée. Objectif : combler partiellement l'absence de `candidates` côté HTR (cf. section 5 — la correction guidée par confiance ne peut s'activer faute de variantes fournies par le modèle) sans attendre l'intégration d'un modèle MLM. Reste à définir : la source des candidats pour un token inconnu (variantes orthographiques proches dans le dictionnaire ? table d'abréviations étendue ?) et le seuil de score à partir duquel appliquer la substitution automatiquement plutôt que de la proposer en révision.
+- Activer la correction MLM (`almanach/camembert-base`) une fois des `candidates` disponibles (HTR ou heuristique ci-dessus).
+- Enrichir le dictionnaire de référence avec les mots-outils pour rendre `lexical-check` plus discriminant.
+
+## 7. Plan « after » — NER, POS, graphe, TEI (non démarré)
+
+Plan en 4 phases séquentielles (chaque phase a des entrées, des livrables et un critère de sortie explicite — on ne passe à la phase suivante que si le critère est rempli). Pas de dates fixes : à dérouler au rythme de l'équipe après la présentation.
+
+### Phase 1 — NER : choisir et brancher un modèle existant
+
+**Objectif** : avoir un modèle NER qui tourne sur le corpus, même sans fine-tuning, pour disposer d'une baseline.
+
+| # | Tâche | Détail | Livrable |
+|---|---|---|---|
+| 1.1 | Tester 2-3 modèles candidats sans fine-tuning | `magistermilitum/roberta-multilingual-medieval-ner`, `pjox/dalembert-classical-fr-ner`, + recherche Hugging Face `camembert medieval` / `camembert old french` | Script `nlp_pipeline/ner_baseline.py` qui charge un modèle et l'applique à un échantillon de lignes normalisées |
+| 1.2 | Choisir le modèle retenu | Comparer qualitativement les sorties sur 10-15 lignes représentatives (présence de PER/LOC plausibles) | Décision documentée (1 paragraphe dans le rapport) |
+| 1.3 | Vérifier/étendre le schéma d'annotation | Lister les classes du modèle choisi (`PER`, `LOC`, `ORG`, `MISC`, `DATE`). Ajouter `TITLE` si besoin (`num_labels` à modifier) | Schéma de labels documenté |
+
+**Critère de sortie phase 1** : un script exécutable produit des entités (même imparfaites) sur au moins 1 document complet.
+
+### Phase 2 — NER : annotation minimale et fine-tuning léger
+
+**Objectif** : améliorer la baseline avec un fine-tuning léger, sans viser la perfection.
+
+| # | Tâche | Détail | Livrable |
+|---|---|---|---|
+| 2.1 | Annoter manuellement 200-300 tokens | Choisir des lignes variées (plusieurs manuscrits) ; annoter avec le schéma retenu en 1.3 | Fichier d'annotation (CSV ou JSONL) |
+| 2.2 | Aligner labels et tokenisation sous-mot | Gérer les word-pieces avec `-100` sur les tokens de continuation — point technique à montrer en présentation | Fonction d'alignement testée (1 test unitaire minimum) |
+| 2.3 | Fine-tuner le modèle | Quelques époques sur les 200-300 tokens annotés | Modèle fine-tuné sauvegardé localement |
+| 2.4 | Évaluer avec `seqeval` | F1 micro + F1 par type d'entité. Même un F1 de 0,40-0,50 valide le pipeline | Rapport de métriques + 2-3 exemples d'erreurs commentés (ex. confusion `TITLE`/`PER`) |
+
+**Critère de sortie phase 2** : F1 micro mesuré et documenté, peu importe sa valeur — l'objectif est la preuve de bout en bout, pas la performance.
+
+### Phase 3 — POS, lemmes et extraction de relations (sous-échantillon)
+
+**Objectif** : couvrir les étapes à faible effort sur un petit nombre de pages, sans bloquer sur la phase NER si elle prend du retard (phase indépendante, peut démarrer en parallèle de la phase 2).
+
+| # | Tâche | Détail | Livrable |
+|---|---|---|---|
+| 3.1 | POS + lemmatisation | `stanza` (modèle `frm`) ou `pie-extended medieval-fr`, sur quelques pages déjà normalisées | Sortie POS/lemmes pour ces pages |
+| 3.2 | Règles d'extraction de relations | Règles lexico-syntaxiques sur séquences de labels NER (ex. `B-PER .* prist .* B-LOC` → `(PERSONNE, PREND, LIEU)`) — pas de LLM | Liste de relations extraites + règles documentées dans le code |
+
+**Critère de sortie phase 3** : au moins une relation extraite et vérifiée manuellement comme correcte sur l'échantillon.
+
+### Phase 4 — Graphe et export TEI (5-10 pages ciblées)
+
+**Objectif** : un livrable visuel/structuré présentable, sur un périmètre volontairement restreint.
+
+| # | Tâche | Détail | Livrable |
+|---|---|---|---|
+| 4.1 | Construire le graphe de relations | `networkx`, à partir des relations de la phase 3 | Visualisation du graphe (image ou notebook) |
+| 4.2 | Export TEI-XML | Baliser `<persName>`, `<placeName>`, `<date>` sur les entités détectées, 5-10 pages | Fichier(s) TEI-XML valide(s) |
+
+**Critère de sortie phase 4** : au moins un fichier TEI valide (validable par un parseur XML), même sur un périmètre réduit.
+
+### Évaluation transverse (à chaque phase)
+
+Mesurer le CER **relatif** (pas absolu — pas de vérité terrain disponible, cf. section 3.c) en ajoutant une colonne de variante par nouvelle étape : sortie brute → règles seules → correction guidée → +NER/relations si cela modifie le texte. Réutiliser directement `relative-eval` / `average_pairwise_cer`, déjà en place.
+
+### Dépendances entre phases
+
+```
+Phase 1 (NER baseline) ──→ Phase 2 (fine-tuning NER) ──┐
+                                                          ├──→ Phase 4 (graphe + TEI)
+Phase 3 (POS + relations) ── peut démarrer en parallèle ─┘
+```
+
+Phase 3 ne dépend pas du résultat du fine-tuning NER (elle peut utiliser la baseline de la phase 1) — c'est la voie à privilégier si le temps manque pour aller jusqu'à la phase 2.
+
+## 8. Non commité actuellement
 
 3 fichiers modifiés (`CONVENTIONS_NLP.md`, `nlp_pipeline/normalization_rules.py`, `nlp_pipeline/tests/test_normalization_rules.py`) contenant le fix des règles u/v et i/j ci-dessus, déjà validé par les tests (13/13). Pas encore poussé.
