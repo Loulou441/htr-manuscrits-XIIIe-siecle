@@ -435,13 +435,19 @@ s3://htr-cremma-medieval/
 
 Pipeline NLP:
 
-- `python src/nlp_day1_cli.py validate --input data/contracts/htr_contract.json`
-- `python src/nlp_day1_cli.py eda --input data/contracts/htr_contract.json --output reports/eda_day1.json`
-- `python src/nlp_day1_cli.py review-queue --input data/contracts/htr_contract.json`
-- `python src/nlp_day1_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json`
-- `python src/nlp_day1_cli.py normalize --text "Et li cuens prist la d~e"`
-- `python src/nlp_day1_cli.py ablation --csv-input data/reference_200.csv`
-- `python src/nlp_day1_cli.py split --records data/documents_metadata.json --output-dir data/splits_nlp`
+- `python src/nlp_cli.py validate --input data/contracts/htr_contract.json`
+- `python src/nlp_cli.py validate --input nlp/output`
+- `python src/nlp_cli.py eda --input data/contracts/htr_contract.json --output reports/eda_day1.json`
+- `python src/nlp_cli.py eda --input nlp/output --output reports/eda_nlp_output.json`
+- `python src/nlp_cli.py review-queue --input data/contracts/htr_contract.json`
+- `python src/nlp_cli.py review-queue --input nlp/output`
+- `python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl`
+- `python src/nlp_cli.py correct --input nlp/output --output-dir nlp/output_corrected --log-output data/review/correction_log.jsonl`
+- `python src/nlp_cli.py normalize-contract --input data/contracts/htr_contract.json --output data/contracts/contract_normalized.json`
+- `python src/nlp_cli.py normalize-contract --input nlp/output --output-dir nlp/output_normalized`
+- `python src/nlp_cli.py normalize --text "Et li cuens prist la d~e"`
+- `python src/nlp_cli.py ablation --csv-input data/reference_200.csv`
+- `python src/nlp_cli.py split --records data/documents_metadata.json --output-dir data/splits_nlp`
 
 Fichiers ajoutes:
 

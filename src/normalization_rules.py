@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 
+TOKEN_RE = re.compile(r"[^\s.,;:!?()\[\]{}\"']+")
+ABBREVIATION_MARKERS = {"~", "⁊", "ꝑ", "ꝗ", "ꝓ", "ꝙ", "ꝯ", "q̃", "qͥ", "q̄"}
 VOWELS = set("aeiouy")
 
 
@@ -87,7 +90,137 @@ class MedievalFrenchNormalizer:
         return "".join(chars)
 
     def _expand_tilde(self, text: str) -> str:
-        out = re.sub(r"o~(?=$|[^a-z])", "om", text)
-        out = re.sub(r"([ae])~", r"\1n", out)
-        out = re.sub(r"o~", "on", out)
+        out = text
+        precomposed = {
+            "ã": "an",
+            "ẽ": "en",
+            "ĩ": "in",
+            "õ": "on",
+            "ũ": "un",
+        }
+        for src, dst in precomposed.items():
+            out = out.replace(src, dst)
+
+        out = re.sub(r"o(?:~|\u0303)(?=$|[^a-z])", "om", out)
+        out = re.sub(r"([aeiu])(?:~|\u0303)", r"\1n", out)
+        out = re.sub(r"o(?:~|\u0303)", "on", out)
         return out
+
+
+def _contains_combining_mark(text: str) -> bool:
+    return any(unicodedata.category(ch).startswith("M") for ch in text)
+
+
+def _is_suspicious_token(token: str) -> bool:
+    if any(ch in token for ch in ABBREVIATION_MARKERS):
+        return True
+    return _contains_combining_mark(token)
+
+
+def _load_lexicon_csv(path: str | Path) -> list[tuple[str, int]]:
+    rows: list[tuple[str, int]] = []
+    p = Path(path)
+    with p.open("r", encoding="utf-8", newline="") as f:
+        for index, line in enumerate(f):
+            if index == 0:
+                continue
+            line = line.rstrip("\r\n")
+            if not line.strip():
+                continue
+            parts = line.rsplit(",", 1)
+            if len(parts) != 2:
+                continue
+            word = parts[0].strip()
+            try:
+                count = int(parts[1].strip())
+            except ValueError:
+                continue
+            rows.append((word, count))
+    return rows
+
+
+def _build_word_counts_from_output_dir(output_dir: str | Path) -> list[tuple[str, int]]:
+    from htr_data_contract import iter_lines, load_json
+
+    counts: Counter = Counter()
+    output_path = Path(output_dir)
+    for json_path in sorted(output_path.rglob("*.json")):
+        try:
+            contract = load_json(json_path)
+        except Exception:
+            continue
+        for _, _, _, line in iter_lines(contract):
+            text = str(line.get("text", ""))
+            counts.update(TOKEN_RE.findall(text.lower()))
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _propose_normalization_suggestion(token: str, abbreviations: dict[str, str]) -> str | None:
+    if token in abbreviations:
+        return None
+    candidate = token
+    if "q̃" in candidate:
+        candidate = candidate.replace("q̃", "que")
+    if "qͥ" in candidate:
+        candidate = candidate.replace("qͥ", "que")
+    if "ꝯ" in candidate:
+        candidate = candidate.replace("ꝯ", "con")
+    if "⁊̃" in candidate:
+        candidate = candidate.replace("⁊̃", "et")
+
+    candidate = re.sub(r"o(?:~|\u0303)(?=$|[^a-z])", "om", candidate)
+    candidate = re.sub(r"([aeiu])(?:~|\u0303)", r"\1n", candidate)
+    candidate = re.sub(r"o(?:~|\u0303)", "on", candidate)
+
+    if candidate != token:
+        return candidate
+    return None
+
+
+def detect_normalization_candidates(
+    lexicon_path: str | Path | None = None,
+    output_dir: str | Path | None = None,
+    top_n: int = 100,
+    abbreviations: dict[str, str] | None = None,
+) -> dict[str, object]:
+    if lexicon_path is not None and Path(lexicon_path).exists():
+        rows = _load_lexicon_csv(lexicon_path)
+    elif output_dir is not None and Path(output_dir).exists():
+        rows = _build_word_counts_from_output_dir(output_dir)
+    else:
+        raise ValueError("Either lexicon_path or output_dir must point to an existing path")
+
+    existing_abbr = abbreviations or {}
+    total_counts = sum(count for _, count in rows)
+    suspicious = [(word, count) for word, count in rows if _is_suspicious_token(word)]
+
+    marker_counts: Counter = Counter()
+    for word, count in rows:
+        for marker in ABBREVIATION_MARKERS:
+            if marker in word:
+                marker_counts[marker] += count
+        if _contains_combining_mark(word):
+            marker_counts["combining_mark"] += count
+
+    top_suspicious = sorted(suspicious, key=lambda kv: (-kv[1], kv[0]))[:top_n]
+    suggestions: list[dict[str, object]] = []
+    for word, count in top_suspicious:
+        proposed = _propose_normalization_suggestion(word, existing_abbr)
+        if proposed is not None:
+            suggestions.append({"token": word, "count": count, "suggested": proposed})
+
+    return {
+        "total_tokens": len(rows),
+        "total_counts": total_counts,
+        "suspicious_tokens": len(suspicious),
+        "marker_counts": dict(marker_counts),
+        "top_suspicious": [
+            {
+                "token": word,
+                "count": count,
+                "suggested": _propose_normalization_suggestion(word, existing_abbr),
+            }
+            for word, count in top_suspicious
+        ],
+        "suggestions": suggestions,
+    }

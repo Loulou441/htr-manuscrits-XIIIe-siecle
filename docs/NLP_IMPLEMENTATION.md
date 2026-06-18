@@ -7,10 +7,11 @@ Ce document explicite comment l'utilisation du NLP a ete applique au projet, san
 - Schema JSON ajoute: `config/htr_data_contract_schema.json`
 - Validation schema + controles logiques (taille `char_confidences` == taille `text`):
   - `src/htr_data_contract.py` -> `validate_contract()`
-- Commande:
+- Commandes:
 
 ```bash
-python src/nlp_day1_cli.py validate --input data/contracts/htr_contract.json
+python src/nlp_cli.py validate --input data/contracts/htr_contract.json
+python src/nlp_cli.py validate --input nlp/output
 ```
 
 ## 2. EDA corpus HTR
@@ -27,10 +28,11 @@ Code:
 
 - `src/htr_data_contract.py` -> `compute_eda()`
 
-Commande:
+Commandes:
 
 ```bash
-python src/nlp_day1_cli.py eda --input data/contracts/htr_contract.json --output reports/eda_day1.json
+python src/nlp_cli.py eda --input data/contracts/htr_contract.json --output reports/eda_day1.json
+python src/nlp_cli.py eda --input nlp/output --output reports/eda_nlp_output.json
 ```
 
 ## 3. Strategie de triage confidence / needs_review
@@ -53,10 +55,11 @@ Code:
 
 - `src/htr_data_contract.py` -> `split_review_buckets()`, `export_review_csv()`
 
-Commande:
+Commandes:
 
 ```bash
-python src/nlp_day1_cli.py review-queue --input data/contracts/htr_contract.json
+python src/nlp_cli.py review-queue --input data/contracts/htr_contract.json
+python src/nlp_cli.py review-queue --input nlp/output
 ```
 
 ## 4. Normalisation par regles
@@ -107,10 +110,11 @@ Code:
 
 - `src/confidence_correction.py` -> `ConfidenceGuidedCorrector`
 
-Commande:
+Commandes:
 
 ```bash
-python src/nlp_day1_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl
+python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl
+python src/nlp_cli.py correct --input nlp/output --output-dir nlp/output_corrected --log-output data/review/correction_log.jsonl
 ```
 
 Note:

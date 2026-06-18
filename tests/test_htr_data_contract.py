@@ -39,6 +39,7 @@ def _sample_contract():
                         "confidence": 0.95,
                         "char_confidences": [0.95, 0.96, 0.95],
                         "needs_review": False,
+                        "polygon": [[0, 0], [10, 0], [10, 1], [0, 1]],
                     },
                     {
                         "line_id": "l2",
@@ -46,6 +47,7 @@ def _sample_contract():
                         "confidence": 0.65,
                         "char_confidences": [0.95, 0.2, 0.95],
                         "needs_review": False,
+                        "polygon": [[0, 0], [3, 0], [3, 1], [0, 1]],
                     },
                 ],
             }
@@ -56,6 +58,13 @@ def _sample_contract():
 def test_validate_contract_ok():
     errors = validate_contract(_sample_contract(), SIMPLE_SCHEMA)
     assert errors == []
+
+
+def test_validate_contract_rejects_missing_polygon():
+    contract = _sample_contract()
+    del contract["pages"][0]["lines"][0]["polygon"]
+    errors = validate_contract(contract, SIMPLE_SCHEMA)
+    assert any("missing polygon" in err for err in errors)
 
 
 def test_eda_outputs_metrics():

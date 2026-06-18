@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import glob
 import json
 from pathlib import Path
+from typing import Sequence
 
-from cer_utils import cer
+from cer_utils import average_pairwise_cer, cer
 from confidence_correction import ConfidenceGuidedCorrector
 from htr_data_contract import (
     compute_eda,
@@ -19,28 +21,92 @@ from htr_data_contract import (
     stratified_split_records,
     validate_contract,
 )
-from normalization_rules import MedievalFrenchNormalizer
+from normalization_rules import MedievalFrenchNormalizer, detect_normalization_candidates
 
 
 DEFAULT_SCHEMA = "config/htr_data_contract_schema.json"
 DEFAULT_ABBR = "data/abbreviations/medieval_abbreviations.json"
 
 
+def resolve_input_paths(input_path: str | Path) -> list[Path]:
+    input_path = Path(input_path)
+    path_str = str(input_path)
+
+    if any(ch in path_str for ch in "*?[" ):
+        matches = sorted(glob.glob(path_str, recursive=True))
+        return [Path(match) for match in matches if Path(match).is_file()]
+
+    if input_path.is_dir():
+        return sorted([path for path in input_path.rglob("*.json") if path.is_file()])
+
+    if input_path.is_file():
+        return [input_path]
+
+    raise FileNotFoundError(f"Input path not found: {input_path}")
+
+
+def load_contracts(input_path: str | Path) -> list[dict]:
+    paths = resolve_input_paths(input_path)
+    if not paths:
+        raise FileNotFoundError(f"No JSON contracts found at: {input_path}")
+
+    contracts: list[dict] = []
+    for path in paths:
+        contracts.append(load_json(path))
+    return contracts
+
+
+def merge_contracts(contracts: list[dict]) -> dict:
+    pages: list[dict] = []
+    for contract in contracts:
+        pages.extend(contract.get("pages", []))
+    return {"pages": pages}
+
+
+def compute_eda_from_contracts(contracts: list[dict]) -> dict:
+    merged_contract = merge_contracts(contracts)
+    return compute_eda(merged_contract)
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
-    contract = load_json(args.input)
-    schema = load_json(args.schema)
-    errors = validate_contract(contract, schema)
-    if errors:
-        for e in errors:
-            print(f"[ERROR] {e}")
+    try:
+        paths = resolve_input_paths(args.input)
+    except FileNotFoundError as exc:
+        print(f"[ERROR] {exc}")
         return 1
-    print("Validation OK: no schema or logical errors found.")
+
+    if not paths:
+        print(f"[ERROR] no JSON files found for input: {args.input}")
+        return 1
+
+    schema = load_json(args.schema)
+    any_errors = False
+    for path in paths:
+        contract = load_json(path)
+        errors = validate_contract(contract, schema)
+        if errors:
+            any_errors = True
+            print(f"[ERROR] {path}")
+            for e in errors:
+                print(f"  {e}")
+        else:
+            print(f"OK: {path}")
+
+    if any_errors:
+        return 1
+
+    print("Validation OK: all contracts are valid.")
     return 0
 
 
 def cmd_eda(args: argparse.Namespace) -> int:
-    contract = load_json(args.input)
-    metrics = compute_eda(contract)
+    try:
+        contracts = load_contracts(args.input)
+    except FileNotFoundError as exc:
+        print(f"[ERROR] {exc}")
+        return 1
+
+    metrics = compute_eda_from_contracts(contracts)
     output = json.dumps(metrics, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(output + "\n", encoding="utf-8")
@@ -49,7 +115,13 @@ def cmd_eda(args: argparse.Namespace) -> int:
 
 
 def cmd_review_queue(args: argparse.Namespace) -> int:
-    contract = load_json(args.input)
+    try:
+        contracts = load_contracts(args.input)
+    except FileNotFoundError as exc:
+        print(f"[ERROR] {exc}")
+        return 1
+
+    contract = merge_contracts(contracts)
     buckets = split_review_buckets(
         contract,
         direct_threshold=args.direct_threshold,
@@ -126,15 +198,149 @@ def cmd_ablation(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_relative_eval(args: argparse.Namespace) -> int:
+    rows = []
+    with open(args.csv_input, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+
+    if not rows:
+        print("No rows in CSV.")
+        return 1
+
+    variant_cols = [col.strip() for col in args.variant_cols.split(",") if col.strip()]
+    if not variant_cols:
+        print("No variant columns specified.")
+        return 1
+
+    per_row_scores = []
+    for row in rows[: args.limit]:
+        variants = [row.get(col, "") for col in variant_cols]
+        if any(v == "" for v in variants):
+            continue
+        per_row_scores.append(average_pairwise_cer(variants))
+
+    if not per_row_scores:
+        print("No valid rows with all variant columns present.")
+        return 1
+
+    avg_score = sum(per_row_scores) / len(per_row_scores)
+    print(f"Average pairwise CER across variants: {avg_score:.4f}")
+    print(f"Rows evaluated: {len(per_row_scores)}")
+    return 0
+
+
 def cmd_correct(args: argparse.Namespace) -> int:
-    contract = load_json(args.input)
-    corrector = ConfidenceGuidedCorrector(threshold=args.threshold)
-    events = corrector.apply_to_contract(contract, log_path=args.log_output)
-    save_json(contract, args.output)
+    try:
+        paths = resolve_input_paths(args.input)
+    except FileNotFoundError as exc:
+        print(f"[ERROR] {exc}")
+        return 1
+
+    if not paths:
+        print(f"[ERROR] no JSON files found for input: {args.input}")
+        return 1
+
+    if len(paths) > 1 and not args.output_dir:
+        print("[ERROR] When correcting multiple contracts, specify --output-dir.")
+        return 1
+
+    contracts = [load_json(path) for path in paths]
+    corrector = ConfidenceGuidedCorrector(
+        threshold=args.threshold,
+        mlm_model=args.mlm_model,
+        device=args.mlm_device,
+    )
+    events: list[dict] = []
+    output_paths: list[Path] = []
+
+    for path, contract in zip(paths, contracts):
+        line_events = corrector.apply_to_contract(contract, log_path=args.log_output)
+        events.extend(line_events)
+
+        if len(paths) == 1 and not args.output_dir:
+            out_path = Path(args.output)
+        else:
+            out_dir = Path(args.output_dir or args.output)
+            if out_dir.suffix.lower() == ".json" and len(paths) > 1:
+                print("[ERROR] --output-dir must be a directory when correcting multiple contracts.")
+                return 1
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / path.name
+
+        save_json(contract, out_path)
+        output_paths.append(out_path)
 
     print(f"Corrections applied: {len(events)}")
-    print(f"Updated contract   : {args.output}")
+    if len(output_paths) == 1:
+        print(f"Updated contract   : {output_paths[0]}")
+    else:
+        print(f"Updated contracts  : {len(output_paths)} files in {output_paths[0].parent}")
     print(f"Correction log     : {args.log_output}")
+    return 0
+
+
+def cmd_normalize_contract(args: argparse.Namespace) -> int:
+    try:
+        paths = resolve_input_paths(args.input)
+    except FileNotFoundError as exc:
+        print(f"[ERROR] {exc}")
+        return 1
+
+    if not paths:
+        print(f"[ERROR] no JSON files found for input: {args.input}")
+        return 1
+
+    if len(paths) > 1 and not args.output_dir:
+        print("[ERROR] When normalizing multiple contracts, specify --output-dir.")
+        return 1
+
+    normalizer = MedievalFrenchNormalizer.from_json(args.abbreviations)
+    output_paths: list[Path] = []
+
+    for path in paths:
+        contract = load_json(path)
+        for page in contract.get("pages", []):
+            for line in page.get("lines", []):
+                text = str(line.get("text", ""))
+                line["normalized_text"] = normalizer.normalize(text)
+
+        if len(paths) == 1 and not args.output_dir:
+            out_path = Path(args.output)
+        else:
+            out_dir = Path(args.output_dir or args.output)
+            if out_dir.suffix.lower() == ".json" and len(paths) > 1:
+                print("[ERROR] --output-dir must be a directory when normalizing multiple contracts.")
+                return 1
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / path.name
+
+        save_json(contract, out_path)
+        output_paths.append(out_path)
+
+    if len(output_paths) == 1:
+        print(f"Normalized contract saved to: {output_paths[0]}")
+    else:
+        print(f"Normalized contracts saved: {len(output_paths)} files in {output_paths[0].parent}")
+    return 0
+
+
+def cmd_detect_normalization(args: argparse.Namespace) -> int:
+    abbreviations = {}
+    if args.abbreviations and Path(args.abbreviations).exists():
+        abbreviations = json.loads(Path(args.abbreviations).read_text(encoding="utf-8"))
+
+    results = detect_normalization_candidates(
+        lexicon_path=args.lexicon,
+        output_dir=args.output_dir,
+        top_n=args.top_n,
+        abbreviations=abbreviations,
+    )
+    output = json.dumps(results, ensure_ascii=False, indent=2)
+    if args.output:
+        Path(args.output).write_text(output + "\n", encoding="utf-8")
+    print(output)
     return 0
 
 
@@ -202,11 +408,53 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=200)
     p.set_defaults(func=cmd_ablation)
 
+    p = sub.add_parser(
+        "relative-eval",
+        help="Compute average pairwise CER across several transcription variants",
+    )
+    p.add_argument("--csv-input", required=True)
+    p.add_argument(
+        "--variant-cols",
+        default="raw,text_normalized,corrected",
+        help="Comma-separated CSV columns containing variant transcriptions",
+    )
+    p.add_argument("--limit", type=int, default=200)
+    p.set_defaults(func=cmd_relative_eval)
+
+    p = sub.add_parser("normalize-contract", help="Normalize an HTR contract by adding normalized_text fields")
+    p.add_argument("--input", required=True, help="Path to a JSON contract file or a directory containing JSON contracts")
+    p.add_argument("--output", default="data/contracts/contract_normalized.json")
+    p.add_argument("--output-dir", help="Directory to write normalized contracts when input contains multiple JSON files")
+    p.add_argument("--abbreviations", default=DEFAULT_ABBR)
+    p.set_defaults(func=cmd_normalize_contract)
+
+    p = sub.add_parser(
+        "detect-normalization",
+        help="Discover dataset-specific normalization candidates from lexicon or output directory",
+    )
+    p.add_argument("--lexicon", help="Path to a lexicon CSV (e.g. nlp/lexique/lexicon.csv)")
+    p.add_argument("--output-dir", help="Path to a prediction output directory (e.g. nlp/output)")
+    p.add_argument("--top-n", type=int, default=50, help="Number of suspicious tokens to report")
+    p.add_argument("--abbreviations", default=DEFAULT_ABBR)
+    p.add_argument("--output", help="Optional JSON file to write the candidate report")
+    p.set_defaults(func=cmd_detect_normalization)
+
     p = sub.add_parser("correct", help="Apply confidence-guided corrections")
-    p.add_argument("--input", required=True)
+    p.add_argument("--input", required=True, help="Path to a JSON contract file or a directory containing JSON contracts")
     p.add_argument("--output", default="data/contracts/contract_corrected.json")
+    p.add_argument("--output-dir", help="Directory to write corrected contracts when input contains multiple JSON files")
     p.add_argument("--log-output", default="data/review/correction_log.jsonl")
     p.add_argument("--threshold", type=float, default=0.7)
+    p.add_argument(
+        "--mlm-model",
+        default=None,
+        help="Optional masked language model for correction (e.g. almanach/camembert-base)",
+    )
+    p.add_argument(
+        "--mlm-device",
+        default=None,
+        help="Device for MLM scoring: cuda, cpu, or auto",
+    )
     p.set_defaults(func=cmd_correct)
 
     p = sub.add_parser("split", help="Create stratified split and seal test set")

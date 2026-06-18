@@ -7,6 +7,8 @@ __pycache__/
 data
 dictionnaire_data
 dictionnaire_ancien_francais.json
+nlp
+
 *.pdf
 # C extensions
 *.so
