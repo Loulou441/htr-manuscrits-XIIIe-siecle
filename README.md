@@ -31,7 +31,7 @@ Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur un cor
 
 Les modèles HTR génériques CREMMA atteignent ~95% de précision sur leurs corpus de validation propres, mais leur généralisation à un corpus non vu requiert un **fine-tuning spécialisé**. Deux limitations motivent ce travail :
 
-- **Mismatch de domaine** : les données d'entraînement originales de `cremma-generic` ne couvrent pas l'intégralité des manuscrits du XIIIe siècle (213 documents).
+- **Mismatch de domaine** : les données d'entraînement originales de `cremma-generic` ne couvrent pas l'intégralité des manuscrits CREMMA Medieval (213 documents).
 - **Bruit dans les annotations ALTO** : les zones de bruit (notation musicale, lettrines, interlignaire) parasitent l'entraînement et représentent ~4.4% des lignes du corpus.
 
 Ce projet explore un pipeline complet : prétraitement adaptatif des images → compilation de données Arrow filtrées → fine-tuning GPU cloud → publication des modèles.
@@ -40,7 +40,7 @@ Ce projet explore un pipeline complet : prétraitement adaptatif des images → 
 
 | Niveau | CER | val_accuracy |
 |--------|:---:|:------------:|
-| Baseline (cremma-generic sans fine-tuning) | 44.5% | 55.5% |
+| Baseline (cremma-generic sans fine-tuning) | *à mesurer* | *à mesurer* |
 | Meilleure run actuelle (Run 4) | 26.3% | 73.7% |
 | Objectif validation | < 15% | > 85% |
 | Objectif excellence | < 8% | > 92% |
@@ -351,10 +351,21 @@ Kraken ne supporte pas de seed fixe globale — les résultats peuvent varier de
 
 ## 8. Pipeline — utilisation
 
+### Étape 0 — Agrégation du corpus (33 manuscrits)
+
+```bash
+python src/dataset.py                        # dataset complet (~25 000 lignes)
+python src/dataset.py --balance               # rééquilibrage 60/40 AF/LAT (~14 700 l.)
+python src/dataset.py --output ./data         # dossier de sortie personnalisé
+python src/dataset.py --balance --dry-run     # affiche le plan sans télécharger
+```
+
+Clone et agrège automatiquement les 4 corpus HTR-United (CREMMA-Medieval, CREMMA-Medieval-LAT, HTRomance FR/LAT — voir [DATA_SOURCES.md](docs/DATA_SOURCES.md)) dans `data/dataset/`, avec un `manifest.json` (cote, langue, script par manuscrit) consommé ensuite par `pre_traitement.py` pour choisir automatiquement la méthode de deskew adaptée au script paléographique.
+
 ### Étape 1 — Prétraitement
 
 ```bash
-python src/pre_traitement.py data/repos/ --output data/preprocessed_grayscale/
+python src/pre_traitement.py data/dataset/ --output data/preprocessed_grayscale/
 ```
 
 ### Étape 2 — Compilation Arrow filtrée
@@ -450,7 +461,7 @@ htr-manuscrits-XIIIe-siecle/
 ├── src/
 │   ├── pre_traitement.py        ← Pipeline prétraitement images (deskew, CLAHE, filtres)
 │   ├── compile_arrow.py         ← Compilation Arrow filtré (sans zones bruit)
-│   ├── dataset.py               ← Utilitaires de chargement / inspection des datasets
+│   ├── dataset.py               ← Étape 0 : agrégation/téléchargement du corpus (4 dépôts HTR-United → data/dataset/ + manifest.json)
 │   └── train.py                 ← Script entraînement (référence)
 │
 ├── notebooks/
@@ -470,8 +481,8 @@ htr-manuscrits-XIIIe-siecle/
 │   └── test_pretraitement.py    ← Tests non-régression pipeline image
 │
 ├── data/
-│   ├── splits/                  ← Fichiers .txt (train/dev/test) + Arrow compilés
-│   └── repos/                   ← Clones des corpus HTR-United (gitignore)
+│   ├── dataset/                 ← Sortie de dataset.py : corpus agrégé + manifest.json (gitignore)
+│   └── splits/                  ← Fichiers .txt (train/dev/test) + Arrow compilés
 │
 ├── models/                      ← Modèles téléchargés localement (gitignore)
 │
