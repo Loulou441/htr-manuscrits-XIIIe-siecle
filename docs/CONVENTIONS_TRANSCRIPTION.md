@@ -1,6 +1,6 @@
-# Conventions de transcription — HTR CREMMA Medieval 2026
+# Conventions de transcription — HTR Manuscrits XIIIe siècle
 
-Corpus : CREMMA Medieval (ancien français et latin, XIIIe–XVe siècle)  
+Corpus : 4 corpus HTR-United (CREMMA-Medieval, CREMMA-Medieval-LAT, HTRomance FR/LAT) (ancien français et latin, XIIIe siècle)  
 Niveau de transcription : **diplomatique** (fidèle au manuscrit, sans normalisation)
 
 ## Abréviations

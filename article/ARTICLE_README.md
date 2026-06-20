@@ -1,8 +1,8 @@
-# Article Scientifique HTR CREMMA Medieval — Guide de Compilation
+# Article Scientifique HTR Manuscrits XIIIe siècle — Guide de Compilation
 
 ## Fichiers produits
 
-- **article_htr_cremma.tex** — Article principal en LaTeX (8 sections)
+- **article_htr_manuscrits_XIIIe_siecle.tex** — Article principal en LaTeX (8 sections)
 - **references.bib** — Bibliographie (BibTeX format)
 
 ## Contenu de l'article
@@ -16,9 +16,9 @@ Résumé de 200 mots couvrant objectifs, méthodologie, résultats (CER 26.3%, a
 - Objectifs : pipeline complet de fine-tuning
 
 ### 3. **Dataset**
-- **Composition** : 21 manuscrits (ancien français + latin, XIIIe–XVe siècle)
+- **Composition** : 33 manuscrits (ancien français + latin, XIIIe siècle)
 - **Sources** : 4 corpus HTR-United (CREMMA-Medieval, CREMMA-Medieval-LAT, HTRomance FR/LAT)
-- **Statistiques** : 213 fichiers train, 32 dev, 3 test → 18 769 lignes filtrées
+- **Statistiques** : 213 fichiers train, 32 dev, 3 test → 22 858 lignes filtrées
 - **Zones ALTO** : inclusionMainZone + MarginTextZone; exclusion MusicZone, DropCapital, Interlinear
 - **Alphabet** : caractères médiévaux spéciaux (ꝗ, ŧ, ᷝ, etc.)
 - **Licence** : CC-BY 4.0
@@ -76,19 +76,19 @@ Résumé de 200 mots couvrant objectifs, méthodologie, résultats (CER 26.3%, a
 
 ```bash
 # Compilation complète (avec références)
-pdflatex article_htr_cremma.tex
-bibtex article_htr_cremma.aux
-pdflatex article_htr_cremma.tex
-pdflatex article_htr_cremma.tex
+pdflatex article_htr_manuscrits_XIIIe_siecle.tex
+bibtex article_htr_manuscrits_XIIIe_siecle.aux
+pdflatex article_htr_manuscrits_XIIIe_siecle.tex
+pdflatex article_htr_manuscrits_XIIIe_siecle.tex
 
 # Ou utiliser latexmk (automatisé)
-latexmk -pdf article_htr_cremma.tex
+latexmk -pdf article_htr_manuscrits_XIIIe_siecle.tex
 
-# Résultat : article_htr_cremma.pdf
+# Résultat : article_htr_manuscrits_XIIIe_siecle.pdf
 ```
 
 ### VS Code / TeXstudio
-- Ouvrir `article_htr_cremma.tex`
+- Ouvrir `article_htr_manuscrits_XIIIe_siecle.tex`
 - Cliquer "Build" ou `Ctrl+Alt+B`
 - Ou utiliser extension LaTeX Workshop (VS Code)
 
@@ -129,4 +129,4 @@ latexmk -pdf article_htr_cremma.tex
 
 ---
 
-*Article généré pour HETIC Mastère Data & IA. Tous les résultats basés sur expériences réelles et données du projet HTR Manuscrits XIIe siècle.*
+*Article généré pour HETIC Mastère Data & IA. Tous les résultats basés sur expériences réelles et données du projet HTR Manuscrits XIIIe siècle.*
