@@ -31,7 +31,7 @@ Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur un cor
 
 Les modèles HTR génériques CREMMA atteignent ~95% de précision sur leurs corpus de validation propres, mais leur généralisation à un corpus non vu requiert un **fine-tuning spécialisé**. Deux limitations motivent ce travail :
 
-- **Mismatch de domaine** : les données d'entraînement originales de `cremma-generic` ne couvrent pas l'intégralité des manuscrits CREMMA Medieval (213 documents).
+- **Mismatch de domaine** : les données d'entraînement originales de `cremma-generic` ne couvrent pas l'intégralité des manuscrits du XIIIe siècle (213 documents).
 - **Bruit dans les annotations ALTO** : les zones de bruit (notation musicale, lettrines, interlignaire) parasitent l'entraînement et représentent ~4.4% des lignes du corpus.
 
 Ce projet explore un pipeline complet : prétraitement adaptatif des images → compilation de données Arrow filtrées → fine-tuning GPU cloud → publication des modèles.
@@ -40,7 +40,7 @@ Ce projet explore un pipeline complet : prétraitement adaptatif des images → 
 
 | Niveau | CER | val_accuracy |
 |--------|:---:|:------------:|
-| Baseline (cremma-generic sans fine-tuning) | *à mesurer* | *à mesurer* |
+| Baseline (cremma-generic sans fine-tuning) | 44.5% | 55.5% |
 | Meilleure run actuelle (Run 4) | 26.3% | 73.7% |
 | Objectif validation | < 15% | > 85% |
 | Objectif excellence | < 8% | > 92% |
@@ -85,7 +85,7 @@ Total lignes corpus : ~48 278
 
 ### Manuscrits du corpus (33 — XIIIe siècle)
 
-Tous les manuscrits ci-dessous datent du **XIIIe siècle**. Le nombre de lignes indiqué est le volume brut par manuscrit avant équilibrage/filtrage des zones bruit (total brut : 22 858 lignes, voir [annexe de l'article scientifique](article_htr_cremma.tex)).
+Tous les manuscrits ci-dessous datent du **XIIIe siècle**. Le nombre de lignes indiqué est le volume brut par manuscrit avant équilibrage/filtrage des zones bruit (total brut : 22 858 lignes, voir [annexe de l'article scientifique](article/article_htr_cremma.tex)).
 
 | Cote / Shelfmark | Langue | Script | Lignes | Corpus d'origine |
 |---|:---:|---|---:|---|
@@ -563,7 +563,7 @@ pdflatex article_htr_cremma.tex
 latexmk -pdf article_htr_cremma.tex
 ```
 
-Voir [`ARTICLE_README.md`](ARTICLE_README.md) pour le détail des sections, la personnalisation (auteurs, en-têtes) et les statistiques du document.
+Voir [`ARTICLE_README.md`](article/ARTICLE_README.md) pour le détail des sections, la personnalisation (auteurs, en-têtes) et les statistiques du document.
 
 ---
 

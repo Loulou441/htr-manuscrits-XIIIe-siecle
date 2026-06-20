@@ -37,7 +37,7 @@
 
 Run 5 (14 juin, Kaggle T4) confirme : changer de modèle de base (`cremma-generic-1.0.1` au lieu de `cremma_generic`) ne change rien — même CER 26.33%, même stage 27, courbe identique à Run 4. Le plafond est dans les **données**, pas le modèle.
 
-Voir [TRAINING_RUNS.md](../TRAINING_RUNS.md) pour le détail des 5 runs.
+Voir [TRAINING_RUNS.md](TRAINING_RUNS.md) pour le détail des 5 runs.
 
 ---
 
