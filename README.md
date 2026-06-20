@@ -471,10 +471,20 @@ htr-manuscrits-XIIIe-siecle/
 │   └── colab_exp2_grayscale.ipynb      ← Exp 2 — aborté (référence)
 │
 ├── docs/
-│   └── SAGEMAKER_ARCHITECTURE.md ← Guide d'architecture HTR sur AWS SageMaker
+│   ├── SAGEMAKER_ARCHITECTURE.md ← Guide d'architecture HTR sur AWS SageMaker
+│   ├── DATA_SOURCES.md          ← Sources corpus + SHA-256 + liens HuggingFace
+│   ├── MODEL_CARD.md            ← Fiche modèle officielle
+│   └── CONVENTIONS_TRANSCRIPTION.md ← Règles de transcription CREMMA
+│
+├── article/
+│   ├── article_htr_manuscrits_XIIIe_siecle.tex ← Article scientifique LaTeX (format IEEE, 2 colonnes)
+│   ├── references.bib           ← Bibliographie BibTeX de l'article
+│   ├── HTR_Manuscrits_XIIIe_siecle.pdf ← Article compilé (PDF)
+│   └── ARTICLE_README.md        ← Guide de compilation et contenu de l'article
 │
 ├── experiments/
 │   ├── EXPERIMENT_LOG.md        ← Journal des hypothèses et décisions
+│   ├── TRAINING_RUNS.md         ← Historique détaillé des runs
 │   └── journal.jsonl            ← Logs structurés machine-readable (une ligne par run)
 │
 ├── tests/
@@ -491,16 +501,7 @@ htr-manuscrits-XIIIe-siecle/
 ├── .devcontainer/devcontainer.json ← Environnement GitHub Codespaces prêt à l'emploi
 ├── packages.txt                 ← Dépendances système (libgl1, libsm6, etc.)
 │
-├── article_htr_manuscrits_XIIIe_siecle.tex       ← Article scientifique LaTeX (format IEEE, 2 colonnes)
-├── references.bib               ← Bibliographie BibTeX de l'article
-├── HTR_Manuscrits_XIIIe_siecle.pdf ← Article compilé (PDF)
-├── ARTICLE_README.md            ← Guide de compilation et contenu de l'article
-│
 ├── README.md                    ← Ce fichier
-├── MODEL_CARD.md                ← Fiche modèle officielle
-├── TRAINING_RUNS.md             ← Historique détaillé des runs
-├── DATA_SOURCES.md              ← Sources corpus + SHA-256 + liens HuggingFace
-├── CONVENTIONS_TRANSCRIPTION.md ← Règles de transcription CREMMA
 └── requirements.txt
 ```
 
