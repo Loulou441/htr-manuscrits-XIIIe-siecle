@@ -1,4 +1,4 @@
-# Journal des expériences — HTR CREMMA Medieval 2026
+# Journal des expériences — HTR Manuscrits Médievaux XIIIE siècle
 
 > Ce document trace chaque décision, chaque run, chaque hypothèse testée.  
 > Objectif : CER < 15% (validation) → CER < 8% (excellence)  

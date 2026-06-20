@@ -14,7 +14,7 @@
 ## Vue d'ensemble
 
 ### Objectif
-Fine-tuner le modèle CREMMA Generic (Kraken/HTR) sur des manuscrits médiévaux (XIIe-XIIIe siècles, latin + vieux français) en utilisant AWS SageMaker pour le calcul GPU, tout en stockant les données sur S3.
+Fine-tuner le modèle CREMMA Generic (Kraken/HTR) sur des manuscrits médiévaux du XIIIe siècle (latin + vieux français) en utilisant AWS SageMaker pour le calcul GPU, tout en stockant les données sur S3.
 
 ### Aujourd'hui (avant)
 ```

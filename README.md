@@ -1,6 +1,6 @@
-# HTR CREMMA Medieval 2026 — Fine-tuning Kraken
+# HTR Manuscrits Médiévaux du XIIIe siècle — Fine-tuning Kraken
 
-Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur le corpus CREMMA Medieval (ancien français + latin, XIIIe–XVe siècle). Fine-tuning du modèle `cremma-generic` avec Kraken 7.x sur GPU cloud (Kaggle / Colab).
+Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur un corpus de **33 manuscrits du XIIIe siècle** (ancien français + latin), agrégés depuis 4 corpus HTR-United. Fine-tuning du modèle `cremma-generic` avec Kraken 7.x sur GPU cloud (Kaggle / Colab).
 
 **Meilleur CER obtenu à ce jour : 26.3% (Run 4 — Kaggle T4)**  
 **Objectif : CER < 15% (validation) → CER < 8% (excellence)**  
@@ -18,10 +18,12 @@ Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur le cor
 6. [Discussion et limitations](#6-discussion-et-limitations)
 7. [Reproductibilité](#7-reproductibilité)
 8. [Pipeline — utilisation](#8-pipeline--utilisation)
-9. [Structure du projet](#9-structure-du-projet)
-10. [Installation](#10-installation)
-11. [Infrastructure cloud](#11-infrastructure-cloud)
-12. [Références](#12-références)
+9. [Démo interactive — Application Streamlit](#9-démo-interactive--application-streamlit)
+10. [Structure du projet](#10-structure-du-projet)
+11. [Installation](#11-installation)
+12. [Infrastructure cloud](#12-infrastructure-cloud)
+13. [Article scientifique](#13-article-scientifique)
+14. [Références](#14-références)
 
 ---
 
@@ -56,7 +58,8 @@ Ce projet explore un pipeline complet : prétraitement adaptatif des images → 
 | Documents ALTO (test) | 3 fichiers |
 | Lignes totales (train, toutes zones) | ~19 800 |
 | Lignes texte courant (train, filtré) | 18 769 |
-| Période couverte | XIIIe–XVe siècle |
+| Manuscrits | 33 (corpus complet train/dev/test, voir §2) |
+| Période couverte | XIIIe siècle |
 | Langues | Ancien français (`fro`), Latin (`lat`) |
 | Format | ALTO XML v4 + JPEG |
 | Licence | CC-BY 4.0 |
@@ -72,12 +75,58 @@ Total lignes corpus : ~48 278
 
 ### Sources
 
-| Corpus | Langue | Dépôt |
-|--------|--------|-------|
-| CREMMA-Medieval | Ancien français | [HTR-United/cremma-medieval](https://github.com/HTR-United/cremma-medieval) |
-| CREMMA-Medieval-LAT | Latin | [HTR-United/CREMMA-Medieval-LAT](https://github.com/HTR-United/CREMMA-Medieval-LAT) |
-| HTRomance Medieval FR | Ancien français | [HTRomance-Project/medieval-french](https://github.com/HTRomance-Project/medieval-french) |
-| HTRomance Medieval LAT | Latin | [HTRomance-Project/medieval-latin](https://github.com/HTRomance-Project/medieval-latin) |
+| Corpus | Langue | Manuscrits | Dépôt |
+|--------|--------|:---:|-------|
+| CREMMA-Medieval | Ancien français | 7 | [HTR-United/cremma-medieval](https://github.com/HTR-United/cremma-medieval) |
+| CREMMA-Medieval-LAT | Latin | 4 | [HTR-United/CREMMA-Medieval-LAT](https://github.com/HTR-United/CREMMA-Medieval-LAT) |
+| HTRomance Medieval FR | Ancien français | 14 | [HTRomance-Project/medieval-french](https://github.com/HTRomance-Project/medieval-french) |
+| HTRomance Medieval LAT | Latin | 8 | [HTRomance-Project/medieval-latin](https://github.com/HTRomance-Project/medieval-latin) |
+| **Total** | | **33** | 4 corpus HTR-United |
+
+### Manuscrits du corpus (33 — XIIIe siècle)
+
+Tous les manuscrits ci-dessous datent du **XIIIe siècle**. Le nombre de lignes indiqué est le volume brut par manuscrit avant équilibrage/filtrage des zones bruit (total brut : 22 858 lignes, voir [annexe de l'article scientifique](article_htr_cremma.tex)).
+
+| Cote / Shelfmark | Langue | Script | Lignes | Corpus d'origine |
+|---|:---:|---|---:|---|
+| BnF fr. 412 | AF | Gothic Textualis | 6324 | CREMMA-Medieval |
+| Arsenal 3516 | AF | Gothic Textualis | 1991 | CREMMA-Medieval |
+| Cologny, Bodmer 168 | AF | Gothic Textualis | 1976 | CREMMA-Medieval |
+| BnF fr. 24428 | AF | Gothic Textualis | 1328 | CREMMA-Medieval |
+| BnF fr. 844 | AF | Gothic Textualis | 224 | CREMMA-Medieval |
+| BnF fr. 17229 | AF | Gothic Textualis | 164 | CREMMA-Medieval |
+| BnF fr. 13496 | AF | Gothic Textualis | 161 | CREMMA-Medieval |
+| CLM 13027 | Lat. | Semitextualis Libraria | 616 | CREMMA-Medieval-LAT |
+| MsWettF 15 | Lat. | Textualis Libraria | 455 | CREMMA-Medieval-LAT |
+| BnF lat. 16195 | Lat. | Semitextualis Currens | 449 | CREMMA-Medieval-LAT |
+| CCCC MSS 236 | Lat. | Textualis Libraria | 192 | CREMMA-Medieval-LAT |
+| BnF NAF 23686 | AF | Gothic Textualis | 424 | HTRomance Medieval FR |
+| BnF fr. 1443 | AF | Gothic Textualis | 418 | HTRomance Medieval FR |
+| BnF fr. 1553 | AF | Gothic Textualis | 506 | HTRomance Medieval FR |
+| BnF fr. 1635 | AF | Gothic Textualis | 217 | HTRomance Medieval FR |
+| BnF fr. 12581 | AF | Gothic Textualis | 306 | HTRomance Medieval FR |
+| BnF fr. 1669 | AF | Gothic Textualis | 484 | HTRomance Medieval FR |
+| BnF fr. 104 | AF | Gothic Textualis | 404 | HTRomance Medieval FR |
+| BnF fr. 2168 | AF | Gothic Textualis | 370 | HTRomance Medieval FR |
+| BnF fr. 1450 | AF | Gothic Textualis | 711 | HTRomance Medieval FR |
+| BnF fr. 23117 | AF | Gothic Textualis | 736 | HTRomance Medieval FR |
+| BnF fr. 6447 | AF | Gothic Textualis | 383 | HTRomance Medieval FR |
+| BnF fr. 2173 | AF | Gothic Textualis | 240 | HTRomance Medieval FR |
+| BnF fr. 19152 | AF | Gothic Textualis | 529 | HTRomance Medieval FR |
+| BnF fr. 12603 | AF | Gothic Textualis | 442 | HTRomance Medieval FR |
+| BnF lat. 8001 | Lat. | Gothic Textualis | 506 | HTRomance Medieval LAT |
+| BnF lat. 16085 | Lat. | Gothic Textualis | 392 | HTRomance Medieval LAT |
+| BnF lat. 17903 | Lat. | Gothic Textualis | 440 | HTRomance Medieval LAT |
+| BnF lat. 14354 | Lat. | Gothic Textualis | 546 | HTRomance Medieval LAT |
+| BnF lat. 16204 | Lat. | Gothic Textualis | 462 | HTRomance Medieval LAT |
+| BnF lat. 16657 | Lat. | Gothic Textualis | 199 | HTRomance Medieval LAT |
+| BnF lat. 5657 | Lat. | Textualis Currens | 152 | HTRomance Medieval LAT |
+| BnF lat. 10996 | Lat. | Textualis Currens | 109 | HTRomance Medieval LAT |
+| **Total (33 manuscrits)** | | | **22 858** | 4 corpus |
+
+> Script dominant : **Gothic Textualis** (92,5% des lignes). Les manuscrits en *Semitextualis Currens* / *Textualis Currens* sont minoritaires — voir [section 6 — limitations](#6-discussion-et-limitations).
+>
+> Un 34e manuscrit, **BnF fr. 25516** (AF, XIIIe siècle, Gothic Textualis, 717 lignes), est utilisé **hors-corpus** uniquement pour un test de généralisation en conditions réelles (non inclus dans l'entraînement ni dans les 33 manuscrits du corpus) — voir [section 5](#5-évaluation-détaillée).
 
 ### Splits
 
@@ -212,13 +261,15 @@ Preuves convergentes :
 
 > Les métriques ci-dessous seront complétées après Exp 3 et le déscellement du set de test.
 
-### CER par siècle (à compléter)
+### CER par script paléographique (à compléter)
 
-| Siècle | Documents | CER Run 4 | CER Exp 3 |
-|--------|:---------:|:---------:|:---------:|
-| XIIIe | *n* | *TODO* | *TODO* |
-| XIVe | *n* | *TODO* | *TODO* |
-| XVe | *n* | *TODO* | *TODO* |
+Tous les manuscrits datent du XIIIe siècle ; la variable pertinente pour l'analyse différentielle est le **script** (cf. tableau des 33 manuscrits, [section 2](#2-corpus-et-données)), pas le siècle.
+
+| Script | Manuscrits | Lignes | CER Run 4 | CER Exp 3 |
+|--------|:---------:|:------:|:---------:|:---------:|
+| Gothic Textualis (dominant) | 27 | ~21 200 | *TODO* | *TODO* |
+| Semitextualis Currens / Libraria | 4 | ~1 500 | *TODO* | *TODO* |
+| Textualis Currens / Libraria | 2 | ~260 | *TODO* | *TODO* |
 
 ### CER par langue (à compléter)
 
@@ -257,7 +308,7 @@ Classes d'erreurs prioritaires à analyser :
 
 1. **Mismatch mode L/1** — toutes les runs 1–6 sur données binarisées → plafond ~74% artificiel. Exp 3 est le premier vrai test grayscale.
 2. **`train.arrow` S3 non-grayscale** — malgré la vérification initiale, le warning Kraken confirme que l'Arrow S3 est binarisé. Seul `train_clean.arrow` compilé localement le 14 juin est vérifié mode L.
-3. **Corpus limité** — 213 documents train, ~18 769 lignes après filtrage. Sous-représentation de certains scribes et du XVe siècle.
+3. **Corpus limité** — 33 manuscrits, ~18 769 lignes après filtrage. Sous-représentation de certains scribes et des scripts minoritaires (*Semitextualis Currens*, *Textualis Currens* — voir [section 5](#5-évaluation-détaillée)).
 4. **22 caractères absents** — présents dans le train set mais absents de l'alphabet du modèle de base. Gérés par `--resize union` mais non comptabilisés dans l'accuracy officielle.
 5. **Biais linguistique** — majoritairement ancien français parisien, couverture latine sous-représentée.
 6. **Reproductibilité GPU** — résultats légèrement différents entre T4 x1 et T4 x2 (DataParallel), entre Colab et Kaggle.
@@ -318,8 +369,9 @@ python src/compile_arrow.py \
 
 | Notebook | Plateforme | Expérience |
 |----------|-----------|-----------|
+| `notebooks/kaggle_training.ipynb` | Kaggle T4 x2 | Runs 2/4/5 — entraînement initial |
+| `notebooks/colab_training.ipynb` | Colab A100/T4 | Run 3 — entraînement initial |
 | `notebooks/kaggle_exp3_clean_arrow.ipynb` | Kaggle T4 x2 | Exp 3 — Arrow filtré grayscale |
-| `notebooks/colab_exp3_clean_arrow.ipynb` | Colab A100 / T4 | Exp 3 — Arrow filtré grayscale |
 | `notebooks/colab_exp2_grayscale.ipynb` | Colab T4 | Exp 2 — aborté (référence) |
 
 Les notebooks récupèrent les credentials AWS depuis **Kaggle Secrets** / **Colab Secrets** — jamais hardcodés.
@@ -348,21 +400,67 @@ hf upload legb/htr-cremma-medieval models/mon_modele.safetensors mon_modele.safe
 
 ---
 
-## 9. Structure du projet
+## 9. Démo interactive — Application Streamlit
+
+Une application **Streamlit** (`app.py`) permet de tester les modèles HTR fine-tunés directement sur une image de manuscrit, sans environnement Python local.
+
+### Fonctionnalités
+
+- Sélection du modèle (Exp 2 — baseline binarisée / Exp 3 — Arrow grayscale filtré) téléchargé à la volée depuis [legb/htr-cremma-medieval](https://huggingface.co/legb/htr-cremma-medieval)
+- Upload d'une image de page ou de ligne (JPEG/PNG)
+- Prétraitement optionnel (activé par défaut) via le **vrai pipeline `src/pre_traitement.py`** : deskew, CLAHE, filtres médian/gaussien → sortie mode L, avec affichage du diagnostic (angle corrigé, filtres appliqués, temps de traitement)
+- Segmentation des lignes via **BLLA** (Kraken) puis transcription (`kraken.rpred`)
+- Affichage de la transcription, de la confiance moyenne et du détail ligne par ligne
+- Téléchargement de la transcription au format `.txt`
+
+### Lancer la démo en local
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+L'application est accessible sur `http://localhost:8501`.
+
+### Lancer la démo via GitHub Codespaces / Dev Container
+
+Le projet inclut une configuration `.devcontainer/devcontainer.json` (image `python:3.11-bookworm`) qui installe automatiquement les dépendances système (`packages.txt`) et Python (`requirements.txt`), puis démarre Streamlit au `postAttachCommand` :
+
+```bash
+# Depuis GitHub : bouton "Code" → "Codespaces" → "Create codespace on fine_tuning"
+# L'app démarre automatiquement sur le port 8501 (forwardé et ouvert en preview)
+```
+
+| Fichier | Rôle |
+|---------|------|
+| `app.py` | Application Streamlit (upload, segmentation, transcription) |
+| `.streamlit/config.toml` | Configuration (thème clair, upload max 50 Mo) |
+| `.devcontainer/devcontainer.json` | Environnement Codespaces prêt à l'emploi |
+| `packages.txt` | Dépendances système (libgl1, libsm6, etc. — requises par OpenCV/Kraken) |
+
+> Note : les deux modèles sont téléchargés depuis HuggingFace au premier lancement et mis en cache (`@st.cache_resource`) — le premier appel peut prendre quelques dizaines de secondes.
+
+---
+
+## 10. Structure du projet
 
 ```
-htr-cremma-medieval-2026/
+htr-manuscrits-XIIIe-siecle/
 │
 ├── src/
 │   ├── pre_traitement.py        ← Pipeline prétraitement images (deskew, CLAHE, filtres)
 │   ├── compile_arrow.py         ← Compilation Arrow filtré (sans zones bruit)
-│   ├── train.py                 ← Script entraînement local (référence)
-│   └── aws_sagemaker_launch.py  ← Orchestrateur SageMaker (optionnel)
+│   ├── dataset.py               ← Utilitaires de chargement / inspection des datasets
+│   └── train.py                 ← Script entraînement (référence)
 │
 ├── notebooks/
-│   ├── kaggle_exp3_clean_arrow.ipynb   ← Exp 3 — Kaggle T4
-│   ├── colab_exp3_clean_arrow.ipynb    ← Exp 3 — Colab
+│   ├── kaggle_training.ipynb           ← Entraînement initial — Kaggle T4
+│   ├── kaggle_exp3_clean_arrow.ipynb    ← Exp 3 — Kaggle T4 (Arrow filtré grayscale)
+│   ├── colab_training.ipynb            ← Entraînement initial — Colab
 │   └── colab_exp2_grayscale.ipynb      ← Exp 2 — aborté (référence)
+│
+├── docs/
+│   └── SAGEMAKER_ARCHITECTURE.md ← Guide d'architecture HTR sur AWS SageMaker
 │
 ├── experiments/
 │   ├── EXPERIMENT_LOG.md        ← Journal des hypothèses et décisions
@@ -377,6 +475,16 @@ htr-cremma-medieval-2026/
 │
 ├── models/                      ← Modèles téléchargés localement (gitignore)
 │
+├── app.py                       ← Application Streamlit — démo interactive HTR
+├── .streamlit/config.toml       ← Config Streamlit (thème, taille upload max)
+├── .devcontainer/devcontainer.json ← Environnement GitHub Codespaces prêt à l'emploi
+├── packages.txt                 ← Dépendances système (libgl1, libsm6, etc.)
+│
+├── article_htr_cremma.tex       ← Article scientifique LaTeX (format IEEE, 2 colonnes)
+├── references.bib               ← Bibliographie BibTeX de l'article
+├── HTR_Manuscrits_XIIIe_siecle.pdf ← Article compilé (PDF)
+├── ARTICLE_README.md            ← Guide de compilation et contenu de l'article
+│
 ├── README.md                    ← Ce fichier
 ├── MODEL_CARD.md                ← Fiche modèle officielle
 ├── TRAINING_RUNS.md             ← Historique détaillé des runs
@@ -387,11 +495,12 @@ htr-cremma-medieval-2026/
 
 ---
 
-## 10. Installation
+## 11. Installation
 
 ```bash
-git clone https://github.com/loulou441/htr-cremma-medieval-2026.git
-cd htr-cremma-medieval-2026
+git clone https://github.com/Loulou441/htr-manuscrits-XIIIe-siecle.git
+cd htr-manuscrits-XIIIe-siecle
+git checkout fine_tuning
 
 python -m venv cremma
 cremma\Scripts\activate      # Windows
@@ -400,9 +509,11 @@ cremma\Scripts\activate      # Windows
 pip install -r requirements.txt
 ```
 
+Pour lancer directement la démo Streamlit après installation : `streamlit run app.py` (voir [section 9](#9-démo-interactive--application-streamlit)).
+
 ---
 
-## 11. Infrastructure cloud
+## 12. Infrastructure cloud
 
 ### Amazon S3 (privé)
 
@@ -430,7 +541,33 @@ s3://htr-cremma-medieval/
 
 ---
 
-## 12. Références
+## 13. Article scientifique
+
+Le projet est accompagné d'un **article scientifique au format IEEE** (deux colonnes, 8 sections, 25+ références) rédigé dans le cadre du Mastère Data & IA d'HETIC.
+
+| Fichier | Description |
+|---------|--------------|
+| `article_htr_cremma.tex` | Source LaTeX de l'article (Abstract, Introduction, Dataset, Pré-traitement, Entraînement, Résultats, Discussion, Conclusion) |
+| `references.bib` | Bibliographie BibTeX (HTR, Kraken, CREMMA, vision par ordinateur) |
+| `HTR_Manuscrits_XIIIe_siecle.pdf` | Version compilée de l'article, prête à la lecture |
+| `ARTICLE_README.md` | Guide détaillé du contenu et instructions de compilation LaTeX |
+
+### Compiler l'article depuis les sources
+
+```bash
+pdflatex article_htr_cremma.tex
+bibtex article_htr_cremma.aux
+pdflatex article_htr_cremma.tex
+pdflatex article_htr_cremma.tex
+# ou, en une seule commande :
+latexmk -pdf article_htr_cremma.tex
+```
+
+Voir [`ARTICLE_README.md`](ARTICLE_README.md) pour le détail des sections, la personnalisation (auteurs, en-têtes) et les statistiques du document.
+
+---
+
+## 14. Références
 
 ### Corpus et données
 
@@ -465,6 +602,6 @@ s3://htr-cremma-medieval/
   title  = {HTR CREMMA Medieval 2026 — Fine-tuning Kraken sur manuscrits médiévaux},
   author = {Ouazar, Djamal and Tessier, Manon and El Mortada, Hamza},
   year   = {2026},
-  url    = {https://github.com/loulou441/htr-cremma-medieval-2026}
+  url    = {https://github.com/Loulou441/htr-manuscrits-XIIIe-siecle}
 }
 ```

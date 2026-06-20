@@ -2,38 +2,78 @@
 
 ## Corpus d'entraînement
 
-### CREMMA Medieval
-- **Source** : [HTR-United / cremma-medieval](https://github.com/HTR-United/cremma-medieval)
-- **Licence** : CC-BY 4.0
-- **Contenu** : 15 manuscrits en ancien français, XIIIe–XVe siècle
+# Sources des données — HTR Manuscrits Médiévaux du XIIIe siècle
+
+## Corpus d'entraînement
+
+Le corpus agrège **33 manuscrits du XIIIe siècle** (ancien français + latin) issus de 4 corpus HTR-United publics, pour un total de **22 858 lignes** (brut, avant équilibrage/filtrage des zones bruit). Liste complète issue de l'annexe A de [`article_htr_cremma.tex`](article_htr_cremma.tex).
+
 - **Format** : ALTO XML + images JPEG (Gallica / BnF)
 - **Langues** : ancien français (`fro`), latin (`lat`)
-- **Manuscrits inclus** :
+- **Licence** : CC-BY 4.0
 
-| Manuscrit | Langue | Siècle | Lignes |
-|-----------|--------|--------|--------|
-| Arsenal_3516 | fro | XIIIe | ~500 |
-| BnF_NAF_23686 | fro | XIIIe | ~200 |
-| BnF_fr_104 | fro | XIIIe | ~300 |
-| BnF_fr_12581 | fro | XIVe | ~400 |
-| BnF_fr_12603 | fro | XIVe | ~400 |
-| BnF_fr_13496 | fro | XIVe | ~300 |
-| BnF_fr_1443 | fro | XIIIe | ~400 |
-| BnF_fr_1450 | fro | XIVe | ~400 |
-| BnF_fr_1553 | fro | XIVe | ~400 |
-| BnF_fr_1635 | fro | XIVe | ~400 |
-| BnF_fr_1669 | fro | XIVe | ~300 |
-| BnF_fr_17229 | fro | XIVe | ~300 |
-| BnF_fr_19152 | fro | XIVe | ~300 |
-| BnF_fr_2168 | fro | XIIIe | ~300 |
-| BnF_fr_2173 | fro | XIIIe | ~300 |
-| BnF_fr_23117 | fro | XIVe | ~300 |
-| BnF_fr_24428 | fro | XIVe | ~300 |
-| BnF_fr_412 | fro | XIIIe | ~400 |
-| BnF_fr_6447 | fro | XIVe | ~300 |
-| BnF_fr_844 | fro | XIVe | ~400 |
-| Cologny,_Bodmer_168 | fro | XIIIe | ~300 |
-| BnF_lat_* (12 manuscrits) | lat | XIIIe–XVe | ~3000 |
+### CREMMA-Medieval (7 manuscrits, ancien français)
+- **Source** : [HTR-United / cremma-medieval](https://github.com/HTR-United/cremma-medieval)
+
+| Manuscrit | Langue | Script | Lignes |
+|-----------|--------|--------|-------:|
+| BnF fr. 412 | fro | Gothic Textualis | 6324 |
+| Arsenal 3516 | fro | Gothic Textualis | 1991 |
+| Cologny, Bodmer 168 | fro | Gothic Textualis | 1976 |
+| BnF fr. 24428 | fro | Gothic Textualis | 1328 |
+| BnF fr. 844 | fro | Gothic Textualis | 224 |
+| BnF fr. 17229 | fro | Gothic Textualis | 164 |
+| BnF fr. 13496 | fro | Gothic Textualis | 161 |
+
+### CREMMA-Medieval-LAT (4 manuscrits, latin)
+- **Source** : [HTR-United / CREMMA-Medieval-LAT](https://github.com/HTR-United/CREMMA-Medieval-LAT)
+
+| Manuscrit | Langue | Script | Lignes |
+|-----------|--------|--------|-------:|
+| CLM 13027 | lat | Semitextualis Libraria | 616 |
+| MsWettF 15 | lat | Textualis Libraria | 455 |
+| BnF lat. 16195 | lat | Semitextualis Currens | 449 |
+| CCCC MSS 236 | lat | Textualis Libraria | 192 |
+
+### HTRomance Medieval FR (14 manuscrits, ancien français)
+- **Source** : [HTRomance-Project / medieval-french](https://github.com/HTRomance-Project/medieval-french)
+
+| Manuscrit | Langue | Script | Lignes |
+|-----------|--------|--------|-------:|
+| BnF NAF 23686 | fro | Gothic Textualis | 424 |
+| BnF fr. 1443 | fro | Gothic Textualis | 418 |
+| BnF fr. 1553 | fro | Gothic Textualis | 506 |
+| BnF fr. 1635 | fro | Gothic Textualis | 217 |
+| BnF fr. 12581 | fro | Gothic Textualis | 306 |
+| BnF fr. 1669 | fro | Gothic Textualis | 484 |
+| BnF fr. 104 | fro | Gothic Textualis | 404 |
+| BnF fr. 2168 | fro | Gothic Textualis | 370 |
+| BnF fr. 1450 | fro | Gothic Textualis | 711 |
+| BnF fr. 23117 | fro | Gothic Textualis | 736 |
+| BnF fr. 6447 | fro | Gothic Textualis | 383 |
+| BnF fr. 2173 | fro | Gothic Textualis | 240 |
+| BnF fr. 19152 | fro | Gothic Textualis | 529 |
+| BnF fr. 12603 | fro | Gothic Textualis | 442 |
+
+### HTRomance Medieval LAT (8 manuscrits, latin)
+- **Source** : [HTRomance-Project / medieval-latin](https://github.com/HTRomance-Project/medieval-latin)
+
+| Manuscrit | Langue | Script | Lignes |
+|-----------|--------|--------|-------:|
+| BnF lat. 8001 | lat | Gothic Textualis | 506 |
+| BnF lat. 16085 | lat | Gothic Textualis | 392 |
+| BnF lat. 17903 | lat | Gothic Textualis | 440 |
+| BnF lat. 14354 | lat | Gothic Textualis | 546 |
+| BnF lat. 16204 | lat | Gothic Textualis | 462 |
+| BnF lat. 16657 | lat | Gothic Textualis | 199 |
+| BnF lat. 5657 | lat | Textualis Currens | 152 |
+| BnF lat. 10996 | lat | Textualis Currens | 109 |
+
+**Total : 33 manuscrits — 22 858 lignes (brut)**
+
+> **Manuscrit hors-corpus** : BnF fr. 25516 (fro, XIIIe siècle, Gothic Textualis, 717 lignes, corpus CREMMA-Medieval) n'est **pas** inclus dans les 33 manuscrits ci-dessus. Il est réservé à un test de généralisation en conditions réelles sur document jamais vu à l'entraînement (voir README, [section 5](README.md#5-évaluation-détaillée)).
+
+
 
 ## Modèles pré-entraînés
 

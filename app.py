@@ -4,8 +4,12 @@ from pathlib import Path
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+import numpy as np
 import streamlit as st
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+from pre_traitement import pretraiter_image  # noqa: E402
 
 HF_REPO = "legb/htr-cremma-medieval"
 
@@ -106,8 +110,40 @@ uploaded = st.file_uploader(
 )
 
 if uploaded:
-    image = Image.open(uploaded).convert("L")
-    st.image(image, caption="Image chargée (mode L)", width="stretch")
+    image_originale = Image.open(uploaded).convert("RGB")
+    appliquer_pretraitement = st.checkbox(
+        "Appliquer le prétraitement adaptatif (deskew + CLAHE + filtres)",
+        value=True,
+        help="Pipeline src/pre_traitement.py : corrige l'inclinaison, améliore le contraste "
+             "et réduit le bruit avant la segmentation/transcription.",
+    )
+
+    if appliquer_pretraitement:
+        # Conversion RGB (PIL) → BGR (convention cv2/OpenCV attendue par pre_traitement.py)
+        img_bgr = np.array(image_originale)[:, :, ::-1].copy()
+        img_traitee, rapport = pretraiter_image(img_bgr)
+        image = Image.fromarray(img_traitee, mode="L")
+
+        with st.expander("Diagnostic du prétraitement", expanded=False):
+            c1, c2 = st.columns(2)
+            c1.markdown(f"""
+- **Angle de redressement** : {rapport.skew_angle:.2f}° {"(corrigé)" if rapport.skew_corrected else "(non corrigé)"}
+- **CLAHE** : {"appliqué (clip=%.1f)" % rapport.clahe_clip_limit if rapport.clahe_applied else "non appliqué"}
+- **Filtre médian** : {"appliqué (ksize=%d)" % rapport.median_ksize if rapport.median_filter_applied else "non appliqué"}
+""")
+            c2.markdown(f"""
+- **Filtre gaussien** : {"appliqué (σ=%.2f)" % rapport.gaussian_sigma if rapport.gaussian_filter_applied else "non appliqué"}
+- **Temps de traitement** : {rapport.processing_time_s * 1000:.0f} ms
+- **Sortie** : niveaux de gris (mode L) — compatible `cremma-generic`
+""")
+    else:
+        image = image_originale.convert("L")
+
+    st.image(
+        image,
+        caption="Image prétraitée (mode L)" if appliquer_pretraitement else "Image originale (mode L, sans prétraitement)",
+        width="stretch",
+    )
 
     if st.button("Segmenter et transcrire", type="primary"):
         try:

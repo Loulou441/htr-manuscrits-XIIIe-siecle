@@ -24,7 +24,7 @@
 
 ## Données d'entraînement
 
-- **Corpus** : CREMMA Medieval (21 manuscrits, ancien français + latin)
+- **Corpus** : 33 manuscrits du XIIIe siècle (ancien français + latin), agrégés depuis 4 corpus HTR-United — voir [DATA_SOURCES.md](DATA_SOURCES.md)
 - **Train** : 213 fichiers ALTO → ~19 800 lignes (Arrow compilé)
 - **Dev** : 32 fichiers ALTO → ~3 700 lignes
 - **Format images** : JPEG → mode L (grayscale) via `pre_traitement.py`
@@ -48,7 +48,7 @@
 1. **Mismatch mode L/1** — runs 1 à 4 entraînées sur données binarisées → plafond ~74%
 2. **Corpus limité** — 213 documents train, ~19 800 lignes → sous-représentation de certains scribes
 3. **Alphabet partiel** — 22 caractères du train set absents du modèle de base (non comptés dans l'accuracy)
-4. **Biais temporel** — corpus XIIIe–XVe siècle principalement, sous-représentation XVe
+4. **Biais de script** — corpus du XIIIe siècle dominé par le script *Gothic Textualis* (92,5%), sous-représentation des scripts *Semitextualis Currens* / *Textualis Currens*
 5. **Biais linguistique** — majoritairement ancien français parisien
 
 ## Modèles publiés — HuggingFace
@@ -78,6 +78,6 @@ Dépôt public : [legb/htr-cremma-medieval](https://huggingface.co/legb/htr-crem
   title  = {HTR CREMMA Medieval 2026 — Fine-tuning Kraken sur manuscrits médiévaux},
   author = {Ouazar, Djamal and Tessier, Manon and El Mortada, Hamza},
   year   = {2026},
-  url    = {https://github.com/loulou441/htr-cremma-medieval-2026}
+  url    = {https://github.com/Loulou441/htr-manuscrits-XIIIe-siecle}
 }
 ```
