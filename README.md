@@ -85,7 +85,7 @@ Total lignes corpus : ~48 278
 
 ### Manuscrits du corpus (33 — XIIIe siècle)
 
-Tous les manuscrits ci-dessous datent du **XIIIe siècle**. Le nombre de lignes indiqué est le volume brut par manuscrit avant équilibrage/filtrage des zones bruit (total brut : 22 858 lignes, voir [annexe de l'article scientifique](article/article_htr_cremma.tex)).
+Tous les manuscrits ci-dessous datent du **XIIIe siècle**. Le nombre de lignes indiqué est le volume brut par manuscrit avant équilibrage/filtrage des zones bruit (total brut : 22 858 lignes, voir [annexe de l'article scientifique](article/article_htr_manuscrits_XIIIe_siecle.tex)).
 
 | Cote / Shelfmark | Langue | Script | Lignes | Corpus d'origine |
 |---|:---:|---|---:|---|
@@ -491,7 +491,7 @@ htr-manuscrits-XIIIe-siecle/
 ├── .devcontainer/devcontainer.json ← Environnement GitHub Codespaces prêt à l'emploi
 ├── packages.txt                 ← Dépendances système (libgl1, libsm6, etc.)
 │
-├── article_htr_cremma.tex       ← Article scientifique LaTeX (format IEEE, 2 colonnes)
+├── article_htr_manuscrits_XIIIe_siecle.tex       ← Article scientifique LaTeX (format IEEE, 2 colonnes)
 ├── references.bib               ← Bibliographie BibTeX de l'article
 ├── HTR_Manuscrits_XIIIe_siecle.pdf ← Article compilé (PDF)
 ├── ARTICLE_README.md            ← Guide de compilation et contenu de l'article
@@ -558,7 +558,7 @@ Le projet est accompagné d'un **article scientifique au format IEEE** (deux col
 
 | Fichier | Description |
 |---------|--------------|
-| `article_htr_cremma.tex` | Source LaTeX de l'article (Abstract, Introduction, Dataset, Pré-traitement, Entraînement, Résultats, Discussion, Conclusion) |
+| `article_htr_manuscrits_XIIIe_siecle.tex` | Source LaTeX de l'article (Abstract, Introduction, Dataset, Pré-traitement, Entraînement, Résultats, Discussion, Conclusion) |
 | `references.bib` | Bibliographie BibTeX (HTR, Kraken, CREMMA, vision par ordinateur) |
 | `HTR_Manuscrits_XIIIe_siecle.pdf` | Version compilée de l'article, prête à la lecture |
 | `ARTICLE_README.md` | Guide détaillé du contenu et instructions de compilation LaTeX |
@@ -566,12 +566,12 @@ Le projet est accompagné d'un **article scientifique au format IEEE** (deux col
 ### Compiler l'article depuis les sources
 
 ```bash
-pdflatex article_htr_cremma.tex
-bibtex article_htr_cremma.aux
-pdflatex article_htr_cremma.tex
-pdflatex article_htr_cremma.tex
+pdflatex article_htr_manuscrits_XIIIe_siecle.tex
+bibtex article_htr_manuscrits_XIIIe_siecle.aux
+pdflatex article_htr_manuscrits_XIIIe_siecle.tex
+pdflatex article_htr_manuscrits_XIIIe_siecle.tex
 # ou, en une seule commande :
-latexmk -pdf article_htr_cremma.tex
+latexmk -pdf article_htr_manuscrits_XIIIe_siecle.tex
 ```
 
 Voir [`ARTICLE_README.md`](article/ARTICLE_README.md) pour le détail des sections, la personnalisation (auteurs, en-têtes) et les statistiques du document.

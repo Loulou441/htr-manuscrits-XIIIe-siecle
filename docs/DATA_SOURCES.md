@@ -6,7 +6,7 @@
 
 ## Corpus d'entraînement
 
-Le corpus agrège **33 manuscrits du XIIIe siècle** (ancien français + latin) issus de 4 corpus HTR-United publics, pour un total de **22 858 lignes** (brut, avant équilibrage/filtrage des zones bruit). Liste complète issue de l'annexe A de [`article_htr_cremma.tex`](../article/article_htr_cremma.tex).
+Le corpus agrège **33 manuscrits du XIIIe siècle** (ancien français + latin) issus de 4 corpus HTR-United publics, pour un total de **22 858 lignes** (brut, avant équilibrage/filtrage des zones bruit). Liste complète issue de l'annexe A de [`article_htr_manuscrits_XIIIe_siecle.tex`](../article/article_htr_manuscrits_XIIIe_siecle.tex).
 
 - **Format** : ALTO XML + images JPEG (Gallica / BnF)
 - **Langues** : ancien français (`fro`), latin (`lat`)
