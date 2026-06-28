@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import statistics
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
+
+from cer_utils import cer
 
 
 class VariantScorer(Protocol):
@@ -91,6 +94,13 @@ class MaskedLMVariantScorer:
         return float(log_probs[token_ids[0]].item())
 
 
+# Modèle MLM utilisé par défaut pour l'arbitrage contextuel (slide 54, étape 2).
+# Activé par défaut : la correction guidée par confiance doit utiliser un vrai
+# modèle de langue plutôt que l'heuristique de repli, conformément au principe
+# du cours (CamemBERT en mode Masked Language Model).
+DEFAULT_MLM_MODEL = "almanach/camembert-base"
+
+
 @dataclass
 class CorrectionEvent:
     line_id: str
@@ -100,19 +110,45 @@ class CorrectionEvent:
     old_confidence: float
 
 
+@dataclass
+class LineCorrectionResult:
+    """Résultat de la correction d'une ligne, avec le nécessaire pour le CER pairwise."""
+    line_id: str
+    raw_text: str
+    corrected_text: str
+    events: list[CorrectionEvent]
+    pairwise_cer: float  # CER(raw_text, corrected_text) — mesure l'ampleur du changement
+
+
 class ConfidenceGuidedCorrector:
     def __init__(
         self,
         threshold: float = 0.7,
         scorer: VariantScorer | None = None,
-        mlm_model: str | None = None,
+        mlm_model: str | None = DEFAULT_MLM_MODEL,
         device: str | int | None = None,
+        use_mlm: bool = True,
     ):
+        """
+        mlm_model : nom du modèle MLM HuggingFace à utiliser pour l'arbitrage contextuel.
+            Par défaut almanach/camembert-base (cf. slide 54 / section 7 du cours).
+        use_mlm : si False, force l'utilisation du HeuristicVariantScorer même si
+            mlm_model est renseigné (utile pour les tests rapides ou les environnements
+            sans GPU/sans poids téléchargés).
+        scorer : permet d'injecter un scorer personnalisé ; prioritaire sur mlm_model.
+        """
         self.threshold = threshold
-        if mlm_model is not None:
+        self.mlm_model_name = mlm_model if use_mlm else None
+        if scorer is not None:
+            self.scorer = scorer
+        elif use_mlm and mlm_model is not None:
             self.scorer = MaskedLMVariantScorer(model_name=mlm_model, device=device)
         else:
-            self.scorer = scorer or HeuristicVariantScorer()
+            self.scorer = HeuristicVariantScorer()
+
+    @property
+    def using_mlm(self) -> bool:
+        return isinstance(self.scorer, MaskedLMVariantScorer)
 
     def correct_line(self, line: dict) -> tuple[str, list[CorrectionEvent]]:
         text = line.get("text", "")
@@ -169,14 +205,61 @@ class ConfidenceGuidedCorrector:
 
         return corrected, events
 
-    def apply_to_contract(self, contract: dict, log_path: str | Path | None = None) -> list[CorrectionEvent]:
+    def apply_to_contract(
+        self,
+        contract: dict,
+        log_path: str | Path | None = None,
+        update_needs_review: bool = True,
+    ) -> dict:
+        """Applique la correction guidée par confiance sur tout le contrat.
+
+        En plus des étapes 1-3 de la slide 54 (identification, arbitrage MLM,
+        application), cette méthode couvre la réinjection (étape 4) :
+        - recalcule `needs_review` ligne par ligne une fois la correction appliquée
+          (si `update_needs_review=True`), sans jamais l'aggraver : une ligne ne
+          repasse à False que si toutes ses positions ambiguës connues ont été
+          traitées et que sa confiance reste cohérente ;
+        - calcule le CER pairwise (raw vs corrigé) pour CHAQUE ligne, et le CER
+          pairwise moyen sur le contrat, afin que l'amplitude des changements
+          introduits par la correction soit mesurée à cette étape, comme à
+          chaque étape du pipeline (cf. CONVENTIONS_NLP.md section 3).
+
+        Retourne un dict :
+            {
+                "events": list[CorrectionEvent],
+                "line_results": list[LineCorrectionResult],
+                "mean_pairwise_cer": float,
+                "n_lines_corrected": int,
+                "n_lines_total": int,
+                "using_mlm": bool,
+                "mlm_model": str | None,
+            }
+        """
         events: list[CorrectionEvent] = []
+        line_results: list[LineCorrectionResult] = []
+
         for page in contract.get("pages", []):
             for line in page.get("lines", []):
+                raw_text = str(line.get("text", ""))
                 new_text, line_events = self.correct_line(line)
+                line_pairwise_cer = cer(raw_text, new_text)
+
                 if line_events:
                     line["text"] = new_text
                     events.extend(line_events)
+
+                line_results.append(
+                    LineCorrectionResult(
+                        line_id=line.get("line_id", ""),
+                        raw_text=raw_text,
+                        corrected_text=new_text,
+                        events=line_events,
+                        pairwise_cer=line_pairwise_cer,
+                    )
+                )
+
+                if update_needs_review:
+                    line["needs_review"] = self._recompute_needs_review(line, line_events)
 
         if log_path is not None:
             path = Path(log_path)
@@ -186,4 +269,68 @@ class ConfidenceGuidedCorrector:
                 for evt in events:
                     record = {"run_at": run_at, **evt.__dict__}
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        return events
+
+        n_lines_total = len(line_results)
+        n_lines_corrected = sum(1 for r in line_results if r.events)
+        mean_pairwise_cer = (
+            sum(r.pairwise_cer for r in line_results) / n_lines_total if n_lines_total else 0.0
+        )
+
+        return {
+            "events": events,
+            "line_results": line_results,
+            "mean_pairwise_cer": mean_pairwise_cer,
+            "n_lines_corrected": n_lines_corrected,
+            "n_lines_total": n_lines_total,
+            "using_mlm": self.using_mlm,
+            "mlm_model": self.mlm_model_name,
+        }
+
+    @staticmethod
+    def _recompute_needs_review(line: dict, line_events: list[CorrectionEvent]) -> bool:
+        """Réinjection (slide 54, étape 4) : ne désactive needs_review que si la
+        ligne n'a plus de signal d'ambiguïté connu après correction.
+
+        Ne fait jamais passer une ligne de False à True (on ne dégrade pas une
+        ligne jugée fiable), et ne fait jamais passer à False une ligne dont la
+        confiance globale ou la dispersion des char_confidences reste mauvaise,
+        même si une correction a été appliquée. Cela évite de masquer une ligne
+        encore problématique simplement parce qu'un caractère a été corrigé.
+        """
+        previously_needed_review = bool(line.get("needs_review", False))
+        if not previously_needed_review:
+            return False
+
+        confidence = float(line.get("confidence", 0.0))
+        char_confidences = line.get("char_confidences", [])
+
+        char_std = (
+            statistics.pstdev(char_confidences) if len(char_confidences) > 1 else 0.0
+        )
+
+        candidates = line.get("candidates")
+        if isinstance(candidates, dict):
+            candidates_list = [candidates]
+        elif isinstance(candidates, list):
+            candidates_list = [c for c in candidates if isinstance(c, dict)]
+        else:
+            candidates_list = []
+
+        corrected_positions = {evt.position for evt in line_events}
+        all_candidate_positions_resolved = all(
+            cand.get("position") in corrected_positions for cand in candidates_list
+        )
+
+        still_low_confidence = confidence < 0.9
+        still_high_variance = char_std > 0.2
+
+        if not candidates_list:
+            # Aucune position ambiguë n'a jamais été identifiable (HTR sans
+            # candidates) : la correction par confiance n'a rien pu faire ici,
+            # donc on ne change pas le statut de review.
+            return True
+
+        if all_candidate_positions_resolved and not still_low_confidence and not still_high_variance:
+            return False
+
+        return True

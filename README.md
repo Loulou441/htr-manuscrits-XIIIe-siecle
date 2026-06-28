@@ -1,4 +1,4 @@
-# HTR CREMMA Medieval 2026 — Fine-tuning Kraken
+# HTR Manuscrit XIIIe siècle — Fine-tuning Kraken
 
 Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur le corpus CREMMA Medieval (ancien français + latin, XIIIe–XVe siècle). Fine-tuning du modèle `cremma-generic` avec Kraken 7.x sur GPU cloud (Kaggle / Colab).
 
@@ -441,13 +441,15 @@ Pipeline NLP:
 - `python src/nlp_cli.py eda --input nlp/output --output reports/eda_nlp_output.json`
 - `python src/nlp_cli.py review-queue --input data/contracts/htr_contract.json`
 - `python src/nlp_cli.py review-queue --input nlp/output`
-- `python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl`
+- `python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl --cer-output data/review/correction_cer_report.json` (CamemBERT MLM actif par défaut ; `--no-mlm` pour le scorer heuristique de repli ; réinjection `needs_review` automatique, désactivable via `--no-review-update`)
 - `python src/nlp_cli.py correct --input nlp/output --output-dir nlp/output_corrected --log-output data/review/correction_log.jsonl`
-- `python src/nlp_cli.py normalize-contract --input data/contracts/htr_contract.json --output data/contracts/contract_normalized.json`
+- `python src/nlp_cli.py normalize-contract --input data/contracts/htr_contract.json --output data/contracts/contract_normalized.json --cer-output data/review/normalize_cer_report.json` (calcule aussi le CER pairwise raw/normalisé)
 - `python src/nlp_cli.py normalize-contract --input nlp/output --output-dir nlp/output_normalized`
 - `python src/nlp_cli.py normalize --text "Et li cuens prist la d~e"`
 - `python src/nlp_cli.py ablation --csv-input data/reference_200.csv`
 - `python src/nlp_cli.py split --records data/documents_metadata.json --output-dir data/splits_nlp`
+
+Le CER pairwise (texte avant/après, faute de vérité terrain complète) est désormais calculé à chaque étape qui modifie le texte (`normalize-contract`, `correct`), en plus de la commande dédiée `relative-eval`.
 
 Fichiers ajoutes:
 
@@ -455,7 +457,7 @@ Fichiers ajoutes:
 - `data/abbreviations/medieval_abbreviations.json` (table abreviations)
 - `src/htr_data_contract.py` (validation, EDA, triage, split scelle)
 - `src/normalization_rules.py` (normaliseur a regles avec toggles)
-- `src/confidence_correction.py` (correction contextuelle guidee par confiance)
+- `src/confidence_correction.py` (correction contextuelle guidee par confiance, scorer CamemBERT MLM actif par defaut, reinjection `needs_review`, CER pairwise par ligne)
 - `src/cer_utils.py` (CER)
 - `src/nlp_day1_cli.py` (CLI unifie)
 
@@ -493,9 +495,9 @@ Fichiers ajoutes:
 
 ```bibtex
 @misc{htr-cremma-medieval-2026,
-  title  = {HTR CREMMA Medieval 2026 — Fine-tuning Kraken sur manuscrits médiévaux},
+  title  = {HTR Manuscrits XIIIe siècle — Fine-tuning Kraken sur manuscrits médiévaux},
   author = {Ouazar, Djamal and Tessier, Manon and El Mortada, Hamza},
   year   = {2026},
-  url    = {https://github.com/loulou441/htr-cremma-medieval-2026}
+  url    = {https://https://github.com/Loulou441/htr-manuscrits-XIIIe-siecle}
 }
 ```

@@ -85,6 +85,8 @@ python src/nlp_day1_cli.py normalize --text "Et li cuens prist la d~e"
 python src/nlp_day1_cli.py normalize --csv-input data/input.csv --csv-output data/normalized/output.csv
 ```
 
+Note : la commande `normalize-contract` (qui applique le normaliseur a un data contract complet, par opposition a `normalize` sur du texte brut/CSV) calcule egalement, depuis cette mise a jour, le **CER pairwise** (`raw` vs `normalized_text`) ligne par ligne et en moyenne, exporte via `--cer-output` — meme principe que pour `correct` (section 6).
+
 ## 5. CER et tableau d'ablation
 
 Code CER:
@@ -99,26 +101,33 @@ python src/nlp_day1_cli.py ablation --csv-input data/reference_200.csv --referen
 
 ## 6. Correction contextuelle guidee par confiance
 
-Implementation operationnelle pour J1:
+Implementation operationnelle pour J1 (mise a jour : MLM active par defaut + reinjection) :
 
 - detection des positions ambiguës selon `char_confidences` + `candidates`
-- selection de variante par scorer contextuel (heuristique par defaut)
+- selection de variante par scorer contextuel : **CamemBERT en mode MLM par defaut** (`almanach/camembert-base`), scorer heuristique disponible en repli via `--no-mlm`
 - trace JSONL des corrections
 - mise a jour du contrat corrige
+- **reinjection** : recalcul de `needs_review` ligne par ligne apres correction (desactivable via `--no-review-update`)
+- **CER pairwise par ligne et moyen** (raw vs corrige), exporte via `--cer-output`
 
 Code:
 
-- `src/confidence_correction.py` -> `ConfidenceGuidedCorrector`
+- `src/confidence_correction.py` -> `ConfidenceGuidedCorrector`, `MaskedLMVariantScorer`, `HeuristicVariantScorer`, `LineCorrectionResult`
 
 Commandes:
 
 ```bash
-python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl
+# MLM actif par defaut (CamemBERT) :
+python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl --cer-output data/review/correction_cer_report.json
 python src/nlp_cli.py correct --input nlp/output --output-dir nlp/output_corrected --log-output data/review/correction_log.jsonl
+
+# Scorer heuristique de repli (sans transformers/torch) :
+python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --no-mlm
 ```
 
 Note:
-- Le cours mentionne CamemBERT MLM pour le scoring (J2 detaille). Ici, un scorer heuristique est fourni pour que la fonctionnalite soit exploitable immediatement sans poids lourds.
+- Le cours mentionne CamemBERT MLM pour le scoring (J2 detaille) : c'est desormais le comportement par defaut de `correct`, et non plus une option a activer manuellement. Le scorer heuristique reste disponible (`--no-mlm`) pour les environnements sans GPU/sans `transformers` installe.
+- Sur les donnees reelles de ce corpus, `candidates` est presque toujours `null` (cf. `PRESENTATION_NLP.md` section 5) : meme avec le MLM actif, 0 correction est appliquee faute de variantes a arbitrer. Le MLM est neanmoins le chemin par defaut, pret a s'activer dès que des `candidates` existent (HTR ou heuristique de substitution par frequence, cf. section 6 de `PRESENTATION_NLP.md`).
 
 ## 7. Split stratifie + test set scelle
 

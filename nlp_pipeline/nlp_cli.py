@@ -267,17 +267,37 @@ def cmd_correct(args: argparse.Namespace) -> int:
         return 1
 
     contracts = [load_json(path) for path in paths]
-    corrector = ConfidenceGuidedCorrector(
-        threshold=args.threshold,
-        mlm_model=args.mlm_model,
-        device=args.mlm_device,
-    )
+    try:
+        corrector = ConfidenceGuidedCorrector(
+            threshold=args.threshold,
+            mlm_model=args.mlm_model,
+            device=args.mlm_device,
+            use_mlm=not args.no_mlm,
+        )
+    except ImportError as exc:
+        print(f"[ERROR] {exc}")
+        print("[ERROR] Le scorer CamemBERT (MLM) est actif par defaut pour la commande 'correct'.")
+        print("        Installez transformers + sentencepiece + torch, ou relancez avec --no-mlm")
+        print("        pour utiliser le scorer heuristique de repli (cf. CONVENTIONS_NLP.md).")
+        return 1
+
+    if corrector.using_mlm:
+        print(f"Scorer : CamemBERT MLM ({corrector.mlm_model_name})")
+    else:
+        print("Scorer : heuristique (MLM désactivé via --no-mlm ou indisponible)")
+
     events: list[dict] = []
     output_paths: list[Path] = []
+    all_line_results = []
 
     for path, contract in zip(paths, contracts):
-        line_events = corrector.apply_to_contract(contract, log_path=args.log_output)
-        events.extend(line_events)
+        result = corrector.apply_to_contract(
+            contract,
+            log_path=args.log_output,
+            update_needs_review=not args.no_review_update,
+        )
+        events.extend(result["events"])
+        all_line_results.extend(result["line_results"])
 
         if len(paths) == 1 and not args.output_dir:
             out_path = Path(args.output)
@@ -292,12 +312,56 @@ def cmd_correct(args: argparse.Namespace) -> int:
         save_json(contract, out_path)
         output_paths.append(out_path)
 
-    print(f"Corrections applied: {len(events)}")
+    n_lines_total = len(all_line_results)
+    n_lines_corrected = sum(1 for r in all_line_results if r.events)
+    mean_pairwise_cer = (
+        sum(r.pairwise_cer for r in all_line_results) / n_lines_total if n_lines_total else 0.0
+    )
+    n_needs_review_after = sum(
+        1
+        for path, contract in zip(paths, contracts)
+        for page in contract.get("pages", [])
+        for line in page.get("lines", [])
+        if bool(line.get("needs_review", False))
+    )
+
+    print(f"Lignes traitees      : {n_lines_total}")
+    print(f"Corrections appliquees: {len(events)} (sur {n_lines_corrected} ligne(s))")
+    print(f"CER pairwise moyen (raw vs corrige): {mean_pairwise_cer:.4f}")
+    if not args.no_review_update:
+        print(f"Lignes needs_review apres correction: {n_needs_review_after}")
+    else:
+        print("Reinjection needs_review desactivee (--no-review-update)")
+
     if len(output_paths) == 1:
         print(f"Updated contract   : {output_paths[0]}")
     else:
         print(f"Updated contracts  : {len(output_paths)} files in {output_paths[0].parent}")
     print(f"Correction log     : {args.log_output}")
+
+    if args.cer_output:
+        cer_report = {
+            "n_lines_total": n_lines_total,
+            "n_lines_corrected": n_lines_corrected,
+            "mean_pairwise_cer": mean_pairwise_cer,
+            "using_mlm": corrector.using_mlm,
+            "mlm_model": corrector.mlm_model_name,
+            "per_line": [
+                {
+                    "line_id": r.line_id,
+                    "pairwise_cer": r.pairwise_cer,
+                    "n_corrections": len(r.events),
+                }
+                for r in all_line_results
+            ],
+        }
+        Path(args.cer_output).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.cer_output).write_text(
+            json.dumps(cer_report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"CER report         : {args.cer_output}")
+
     return 0
 
 
@@ -318,13 +382,24 @@ def cmd_normalize_contract(args: argparse.Namespace) -> int:
 
     normalizer = MedievalFrenchNormalizer.from_json(args.abbreviations)
     output_paths: list[Path] = []
+    per_line_cer: list[dict] = []
 
     for path in paths:
         contract = load_json(path)
         for page in contract.get("pages", []):
             for line in page.get("lines", []):
                 text = str(line.get("text", ""))
-                line["normalized_text"] = normalizer.normalize(text)
+                normalized_text = normalizer.normalize(text)
+                line["normalized_text"] = normalized_text
+                # CER pairwise (brut vs normalisé) : mesure l'ampleur du changement
+                # introduit par les règles à cette étape (pas de vérité terrain
+                # disponible, cf. CONVENTIONS_NLP.md section 3).
+                per_line_cer.append(
+                    {
+                        "line_id": line.get("line_id", ""),
+                        "pairwise_cer": cer(text, normalized_text),
+                    }
+                )
 
         if len(paths) == 1 and not args.output_dir:
             out_path = Path(args.output)
@@ -339,10 +414,30 @@ def cmd_normalize_contract(args: argparse.Namespace) -> int:
         save_json(contract, out_path)
         output_paths.append(out_path)
 
+    mean_pairwise_cer = (
+        sum(row["pairwise_cer"] for row in per_line_cer) / len(per_line_cer) if per_line_cer else 0.0
+    )
+    print(f"Lignes normalisees : {len(per_line_cer)}")
+    print(f"CER pairwise moyen (raw vs normalise): {mean_pairwise_cer:.4f}")
+
     if len(output_paths) == 1:
         print(f"Normalized contract saved to: {output_paths[0]}")
     else:
         print(f"Normalized contracts saved: {len(output_paths)} files in {output_paths[0].parent}")
+
+    if args.cer_output:
+        cer_report = {
+            "n_lines": len(per_line_cer),
+            "mean_pairwise_cer": mean_pairwise_cer,
+            "per_line": per_line_cer,
+        }
+        Path(args.cer_output).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.cer_output).write_text(
+            json.dumps(cer_report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"CER report         : {args.cer_output}")
+
     return 0
 
 
@@ -464,6 +559,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", default="data/contracts/contract_normalized.json")
     p.add_argument("--output-dir", help="Directory to write normalized contracts when input contains multiple JSON files")
     p.add_argument("--abbreviations", default=DEFAULT_ABBR)
+    p.add_argument(
+        "--cer-output",
+        default="data/review/normalize_cer_report.json",
+        help="Optional JSON file to write the pairwise CER report (raw vs normalized, per line and average)",
+    )
     p.set_defaults(func=cmd_normalize_contract)
 
     p = sub.add_parser(
@@ -488,21 +588,36 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", help="Optional JSON file to write the report")
     p.set_defaults(func=cmd_lexical_check)
 
-    p = sub.add_parser("correct", help="Apply confidence-guided corrections")
+    p = sub.add_parser("correct", help="Apply confidence-guided corrections (CamemBERT MLM by default)")
     p.add_argument("--input", required=True, help="Path to a JSON contract file or a directory containing JSON contracts")
     p.add_argument("--output", default="data/contracts/contract_corrected.json")
     p.add_argument("--output-dir", help="Directory to write corrected contracts when input contains multiple JSON files")
     p.add_argument("--log-output", default="data/review/correction_log.jsonl")
+    p.add_argument(
+        "--cer-output",
+        default="data/review/correction_cer_report.json",
+        help="Optional JSON file to write the pairwise CER report (raw vs corrected, per line and average)",
+    )
     p.add_argument("--threshold", type=float, default=0.7)
     p.add_argument(
         "--mlm-model",
-        default=None,
-        help="Optional masked language model for correction (e.g. almanach/camembert-base)",
+        default="almanach/camembert-base",
+        help="Masked language model used for contextual arbitration (default: almanach/camembert-base)",
     )
     p.add_argument(
         "--mlm-device",
-        default=None,
+        default="auto",
         help="Device for MLM scoring: cuda, cpu, or auto",
+    )
+    p.add_argument(
+        "--no-mlm",
+        action="store_true",
+        help="Disable the MLM scorer and fall back to the lightweight heuristic scorer",
+    )
+    p.add_argument(
+        "--no-review-update",
+        action="store_true",
+        help="Do not recompute needs_review after correction (keep the original HTR flag)",
     )
     p.set_defaults(func=cmd_correct)
 

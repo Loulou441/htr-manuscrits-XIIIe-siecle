@@ -1,59 +1,168 @@
-# Conventions NLP
+# NLP - Implementation dans le projet
 
-Ce document décrit les règles de normalisation et d'évaluation utilisées dans le pipeline NLP du projet.
+Ce document explicite comment l'utilisation du NLP a ete applique au projet, sans suppression de fichiers existants.
 
-## 1. Normalisation déterministe
+## 1. Validation du data contract HTR
 
-Les règles suivantes sont appliquées avant toute correction statistique/IA :
+- Schema JSON ajoute: `config/htr_data_contract_schema.json`
+- Validation schema + controles logiques (taille `char_confidences` == taille `text`):
+  - `src/htr_data_contract.py` -> `validate_contract()`
+- Commandes:
 
-- `Unicode NFC` : normalisation des formes combinées pour assurer une comparaison stable.
-- `lowercase` : conversion en minuscules pour réduire la variabilité graphique.
-- `u/v` : les variantes médiévales sont harmonisées selon le contexte (début de mot / voyelle suivante).
-  - **Exceptions** (corpus `nlp_pipeline/normalization_rules.py::_apply_uv_rule`) : le `u` des digrammes `qu`/`gu` (`que`, `qui`, `guerre`) et le `u` suivi de `i` (`lui`) ne sont jamais convertis en `v`, car ce ne sont pas des `u` consonantiques. Limite connue : ceci empêche aussi la conversion correcte de `deuient` → `devient` (faux négatif accepté, plus rare que les faux positifs corrigés).
-- `i/j` : la lettre `i` est convertie en `j` lorsqu'elle précède une voyelle autre que `e`, comme dans les graphies moyen-français.
-  - **Exception** (`_apply_ij_rule`) : le digramme `ie`/`ien`/`ier` (`bien`, `mie`, `biel`, `manjere`...) garde son `i` vocalique — aucun cas correct de `i`→`j` devant `e` n'a été observé sur ce corpus lors de l'audit du 2026-06-18.
-- `tilde nasal` : les abréviations nasales `a~`, `e~`, `o~` sont résolues en `an`, `en`, `on`.
-- table d'abréviations : une table JSON spécifique aux formes médiévales et latines du corpus est appliquée.
+```bash
+python src/nlp_cli.py validate --input data/contracts/htr_contract.json
+python src/nlp_cli.py validate --input nlp/output
+```
 
-La table `nlp_pipeline/medieval_abbreviations.json` contient les correspondances préférentielles :
-- `q~` → `que`
-- `d~e` → `dame`
-- `⁊` → `et`
-- `ꝑ` → `per`
-- `ꝗ` → `que`
-- `ꝓ` → `pro`
-- `ꝙ` → `us`
--  formes latines comme `dñs` → `dominus` et `q̄` → `qui`
+## 2. EDA corpus HTR
 
-## 2. Correction guidée par confiance
+Metriques implementees (cours J1):
 
-La correction guidée examine les positions où la confiance caractère est faible (`char_confidences < threshold`) et où des variantes sont proposées dans `candidates`.
+- confiance moyenne
+- mediane de longueur de ligne
+- taux `needs_review`
+- taux de lignes courtes `< 10`
+- abreviations residuelles par ligne (`~`, `ꝑ`, `ꝗ`, `ꝓ`, `ꝙ`)
 
-Le principe :
+Code:
 
-- pour chaque position ambiguë, on génère des versions candidates de la ligne,
-- on évalue chaque variante avec un modèle de langage en mode MLM,
-- on choisit la variante la plus probable pour cette position.
+- `src/htr_data_contract.py` -> `compute_eda()`
 
-Le modèle par défaut est `almanach/camembert-base` en mode Masked Language Model.
+Commandes:
 
-## 3. Évaluation relative
+```bash
+python src/nlp_cli.py eda --input data/contracts/htr_contract.json --output reports/eda_day1.json
+python src/nlp_cli.py eda --input nlp/output --output reports/eda_nlp_output.json
+```
 
-Parce qu'il n'existe pas de vérité terrain complète pour ces manuscrits, l'évaluation est comparative :
+## 3. Strategie de triage confidence / needs_review
 
-- on mesure le CER pairwise moyen entre plusieurs variantes d'une même ligne (`raw`, `text_normalized`, `corrected`) via `average_pairwise_cer` / la commande `relative-eval`,
-- on peut ainsi suivre la stabilité du pipeline : sortie brute, normalisation par règles, correction guidée, etc.
+Regles implementees:
 
-**Ne pas utiliser `ablation` sans une vraie colonne de référence** (transcription validée manuellement, ex. XML ALTO/PageXML). Sans cela, `CER before` est trivialement 0 (comparaison du texte brut à lui-même) et `CER after` ne mesure que l'ampleur des changements introduits par la normalisation — pas un gain de qualité réel.
+- `confidence < 0.60` -> exclusion auto
+- `0.60 <= confidence < 0.90` -> review
+- `confidence >= 0.90` -> ingestion directe
+- override review si:
+  - `needs_review == true`
+  - ecart-type `char_confidences > 0.2`
 
-## 4. Détection lexicale
+Sorties:
 
-En complément de `detect-normalization` (qui repère des marqueurs typographiques d'abréviation : `~`, `⁊`, `ꝑ`...), la commande `lexical-check` vérifie si chaque token existe dans `dictionnaire_ancien_francais.json` (lexique Wiktionary ancien français + CLTK, ~55k entrées, téléchargé/construit par `nlp_pipeline/lexique/dictionary.py` puis synchronisé sur `s3://htr-cremma-medieval/nlp/dictionary/`). Les tokens absents du dictionnaire sont des candidats à une vraie erreur lexicale (mot mal transcrit, abréviation non résolue, terme hors corpus).
+- CSV de revue humain-in-the-loop
+- JSON des buckets `direct/review/exclude`
 
-## 5. Mise en œuvre dans le code
+Code:
 
-- `nlp_pipeline/normalization_rules.py` implémente les règles déterministes, la détection de marqueurs d'abréviation (`detect_normalization_candidates`) et la détection lexicale par dictionnaire (`find_lexical_errors`).
-- `nlp_pipeline/confidence_correction.py` implémente la correction guidée par confiance et par MLM.
-- `nlp_pipeline/cer_utils.py` calcule le CER et les scores relatifs entre variantes.
-- `nlp_pipeline/lexique/dictionary.py` construit `dictionnaire_ancien_francais.json` à partir de Wiktionary et du lexique CLTK.
-- `nlp_pipeline/nlp_cli.py` expose les commandes `validate`, `eda`, `review-queue`, `normalize`, `normalize-contract`, `correct`, `ablation`, `relative-eval`, `detect-normalization`, `lexical-check` et `split`.
+- `src/htr_data_contract.py` -> `split_review_buckets()`, `export_review_csv()`
+
+Commandes:
+
+```bash
+python src/nlp_cli.py review-queue --input data/contracts/htr_contract.json
+python src/nlp_cli.py review-queue --input nlp/output
+```
+
+## 4. Normalisation par regles
+
+Normaliseur en classe independante, regles activables/desactivables (ablation possible):
+
+- NFC Unicode
+- minuscule
+- regles `u/v`
+- regles `i/j`
+- expansion tilde (`a~`, `e~`, `o~`)
+- table d'abreviations JSON
+
+Code:
+
+- `src/normalization_rules.py` -> `NormalizerConfig`, `MedievalFrenchNormalizer`
+- table par defaut: `data/abbreviations/medieval_abbreviations.json`
+
+Commandes:
+
+```bash
+python src/nlp_day1_cli.py normalize --text "Et li cuens prist la d~e"
+python src/nlp_day1_cli.py normalize --csv-input data/input.csv --csv-output data/normalized/output.csv
+```
+
+Note : la commande `normalize-contract` (qui applique le normaliseur a un data contract complet, par opposition a `normalize` sur du texte brut/CSV) calcule egalement, depuis cette mise a jour, le **CER pairwise** (`raw` vs `normalized_text`) ligne par ligne et en moyenne, exporte via `--cer-output` — meme principe que pour `correct` (section 6).
+
+## 5. CER et tableau d'ablation
+
+Code CER:
+
+- `src/cer_utils.py` -> `cer()`
+
+Ablation (avant/apres normalisation):
+
+```bash
+python src/nlp_day1_cli.py ablation --csv-input data/reference_200.csv --reference-col reference --hypothesis-col text
+```
+
+## 6. Correction contextuelle guidee par confiance
+
+Implementation operationnelle pour J1 (mise a jour : MLM active par defaut + reinjection) :
+
+- detection des positions ambiguës selon `char_confidences` + `candidates`
+- selection de variante par scorer contextuel : **CamemBERT en mode MLM par defaut** (`almanach/camembert-base`), scorer heuristique disponible en repli via `--no-mlm`
+- trace JSONL des corrections
+- mise a jour du contrat corrige
+- **reinjection** : recalcul de `needs_review` ligne par ligne apres correction (desactivable via `--no-review-update`)
+- **CER pairwise par ligne et moyen** (raw vs corrige), exporte via `--cer-output`
+
+Code:
+
+- `src/confidence_correction.py` -> `ConfidenceGuidedCorrector`, `MaskedLMVariantScorer`, `HeuristicVariantScorer`, `LineCorrectionResult`
+
+Commandes:
+
+```bash
+# MLM actif par defaut (CamemBERT) :
+python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl --cer-output data/review/correction_cer_report.json
+python src/nlp_cli.py correct --input nlp/output --output-dir nlp/output_corrected --log-output data/review/correction_log.jsonl
+
+# Scorer heuristique de repli (sans transformers/torch) :
+python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --no-mlm
+```
+
+Note:
+- Le cours mentionne CamemBERT MLM pour le scoring (J2 detaille) : c'est desormais le comportement par defaut de `correct`, et non plus une option a activer manuellement. Le scorer heuristique reste disponible (`--no-mlm`) pour les environnements sans GPU/sans `transformers` installe.
+- Sur les donnees reelles de ce corpus, `candidates` est presque toujours `null` (cf. `PRESENTATION_NLP.md` section 5) : meme avec le MLM actif, 0 correction est appliquee faute de variantes a arbitrer. Le MLM est neanmoins le chemin par defaut, pret a s'activer dès que des `candidates` existent (HTR ou heuristique de substitution par frequence, cf. section 6 de `PRESENTATION_NLP.md`).
+
+## 7. Split stratifie + test set scelle
+
+Implementation:
+
+- stratification sur `(century_estimate, document_type)`
+- generation `train/val/test`
+- scellement du test set (`test_sealed.json`) et hash SHA-256 (`test_set.sha256`)
+
+Code:
+
+- `src/htr_data_contract.py` -> `stratified_split_records()`, `seal_test_set()`
+
+Commande:
+
+```bash
+python src/nlp_day1_cli.py split --records data/documents_metadata.json --output-dir data/splits_nlp
+```
+
+## 8. Tests automatiques
+
+Nouveaux tests:
+
+- `tests/test_normalization_rules.py`
+- `tests/test_htr_data_contract.py`
+
+Lancer:
+
+```bash
+pytest -q
+```
+
+## 9. Dependances ajoutees
+
+`requirements.txt`:
+
+- `jsonschema>=4.21`
+- `pytest>=8.0`

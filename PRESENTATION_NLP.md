@@ -87,14 +87,15 @@ Appliquées dans l'ordre, avant toute correction statistique :
 ## 5. Limites connues, à mentionner à l'oral
 
 - **Détection lexicale (4.4% de couverture)** : le dictionnaire externe (Wiktionary ancien français + CLTK) couvre le vocabulaire lexical mais pas les mots-outils très fréquents (`est`, `ce`, `vous`, `tout`...). Le taux bas reflète une limite de la ressource, pas un échec de normalisation — la preuve : les marqueurs typographiques bruts (`⁊`, `q̃`, `ꝑ`) ont disparu du classement après normalisation.
-- **Correction guidée par confiance/MLM** : codée mais non activée sur ce run (`candidates` est `null` sur les données réelles ; pas de modèle MLM branché) — 0 correction appliquée. La colonne `corrected` du CER relatif est donc actuellement identique à la normalisation par règles.
+- **Correction guidée par confiance/MLM** : le scorer CamemBERT (mode MLM, `almanach/camembert-base`) est désormais **activé par défaut** dans `nlp_cli.py correct` (auparavant codé mais non branché par défaut). La limite réelle qui subsiste : `candidates` est `null` sur la quasi-totalité des données réelles de ce corpus, donc même avec le MLM actif, le correcteur n'a aucune variante à arbitrer et **0 correction est appliquée** sur ce run. Le CER pairwise de l'étape `correct` est donc proche de 0 (texte inchangé), ce qui est attendu et documenté, pas un bug.
+- **Réinjection** : `needs_review` est désormais recalculé après correction (passe à `false` si toutes les positions ambiguës connues ont été résolues et que la confiance reste bonne) — mais comme aucune correction réelle n'est appliquée sur ce run (point ci-dessus), cette réinjection n'a, pour l'instant, aucun effet observable sur le corpus actuel non plus.
 - **Règle u/v** : exclut volontairement `u+i` (ex. `lui`) pour éviter les faux positifs, ce qui empêche `deuient→devient` d'être corrigé — compromis documenté et accepté.
 
 ## 6. Prochaines étapes possibles
 
-- Activer la correction MLM (`almanach/camembert-base`) pour aller au-delà des règles déterministes.
+- Générer de vraies entrées `candidates` côté HTR ou via l'heuristique de substitution par fréquence ci-dessous, pour que le scorer CamemBERT (déjà actif par défaut) ait effectivement des variantes à arbitrer.
 - Enrichir le dictionnaire de référence avec les mots-outils pour rendre `lexical-check` plus discriminant.
-- **Heuristique de substitution par fréquence** : pour chaque token jugé inconnu/suspect (via `find_lexical_errors` ou `detect_normalization_candidates`), calculer un score de vraisemblance pour chaque substitution candidate à partir de sa fréquence d'apparition dans le dictionnaire/lexique de référence (ex. `score(candidat) = fréquence(candidat) / Σ fréquences(tous les candidats)`), et retenir automatiquement la substitution la plus probable plutôt que de s'arrêter à une simple détection. Vise à pallier l'absence de `candidates` côté HTR (section 5) sans attendre l'intégration du MLM.
+- **Heuristique de substitution par fréquence** : pour chaque token jugé inconnu/suspect (via `find_lexical_errors` ou `detect_normalization_candidates`), calculer un score de vraisemblance pour chaque substitution candidate à partir de sa fréquence d'apparition dans le dictionnaire/lexique de référence (ex. `score(candidat) = fréquence(candidat) / Σ fréquences(tous les candidats)`), et retenir automatiquement la substitution la plus probable plutôt que de s'arrêter à une simple détection. Vise à pallier l'absence de `candidates` côté HTR (section 5) maintenant que le MLM est prêt à les exploiter.
 
 ## 7. Plan « after » (post-présentation) — NER, POS, graphe, TEI
 
