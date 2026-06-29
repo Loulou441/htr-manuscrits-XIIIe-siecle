@@ -1,503 +1,423 @@
-# HTR Manuscrit XIIIe siècle — Fine-tuning Kraken
+# Pipeline NLP — Manuscrits médiévaux XIIIe siècle
 
-Projet de **Reconnaissance Automatique d'Écriture Manuscrite (HTR)** sur le corpus CREMMA Medieval (ancien français + latin, XIIIe–XVe siècle). Fine-tuning du modèle `cremma-generic` avec Kraken 7.x sur GPU cloud (Kaggle / Colab).
+Volet NLP (MD5 Volet 2) du projet HTR Manuscrits XIIIe Siècle. Ce document couvre **uniquement le pipeline NLP** : ingestion du data contract HTR, normalisation par règles, correction guidée par confiance (CamemBERT MLM), détection lexicale, évaluation relative (CER pairwise) et split stratifié.
 
-**Meilleur CER obtenu à ce jour : 26.3% (Run 4 — Kaggle T4)**  
-**Objectif : CER < 15% (validation) → CER < 8% (excellence)**  
-**Modèles publiés : [legb/htr-cremma-medieval](https://huggingface.co/legb/htr-cremma-medieval)**
+> Le pipeline NLP prend en entrée la sortie du modèle HTR (Kraken) développé dans le Volet 1 du projet. Pour le détail de l'entraînement HTR (CER, architecture, expériences), voir le [README principal](README.md) du dépôt.
 
 ---
 
 ## Sommaire
 
-1. [Contexte et objectifs](#1-contexte-et-objectifs)
-2. [Corpus et données](#2-corpus-et-données)
-3. [Méthodologie](#3-méthodologie)
-4. [Résultats des expériences](#4-résultats-des-expériences)
-5. [Évaluation détaillée](#5-évaluation-détaillée)
-6. [Discussion et limitations](#6-discussion-et-limitations)
-7. [Reproductibilité](#7-reproductibilité)
-8. [Pipeline — utilisation](#8-pipeline--utilisation)
-9. [Structure du projet](#9-structure-du-projet)
-10. [Installation](#10-installation)
-11. [Infrastructure cloud](#11-infrastructure-cloud)
-12. [NLP Jour 1 - Data Contract & Normalisation](#12-nlp-jour-1---data-contract--normalisation)
-13. [Références](#13-références)
+1. [Contexte : d'où vient le NLP dans ce projet](#1-contexte--doù-vient-le-nlp-dans-ce-projet)
+2. [Le data contract HTR](#2-le-data-contract-htr)
+3. [Architecture du pipeline NLP](#3-architecture-du-pipeline-nlp)
+4. [Validation et EDA](#4-validation-et-eda)
+5. [Stratégie de triage / review queue](#5-stratégie-de-triage--review-queue)
+6. [Normalisation par règles](#6-normalisation-par-règles)
+7. [Correction guidée par confiance (CamemBERT MLM)](#7-correction-guidée-par-confiance-camembert-mlm)
+8. [Détection lexicale](#8-détection-lexicale)
+9. [Évaluation : CER pairwise à chaque étape](#9-évaluation--cer-pairwise-à-chaque-étape)
+10. [Split stratifié et test set scellé](#10-split-stratifié-et-test-set-scellé)
+11. [Référence des commandes CLI](#11-référence-des-commandes-cli)
+12. [Structure des fichiers](#12-structure-des-fichiers)
+13. [Tests](#13-tests)
+14. [Résultats sur le corpus complet](#14-résultats-sur-le-corpus-complet)
+15. [Limites connues](#15-limites-connues)
+16. [Prochaines étapes](#16-prochaines-étapes)
 
 ---
 
-## 1. Contexte et objectifs
+## 1. Contexte : d'où vient le NLP dans ce projet
 
-Les modèles HTR génériques CREMMA atteignent ~95% de précision sur leurs corpus de validation propres, mais leur généralisation à un corpus non vu requiert un **fine-tuning spécialisé**. Deux limitations motivent ce travail :
+*(Résumé — pour le détail complet, voir le [README principal](README.md))*
 
-- **Mismatch de domaine** : les données d'entraînement originales de `cremma-generic` ne couvrent pas l'intégralité des manuscrits CREMMA Medieval (213 documents).
-- **Bruit dans les annotations ALTO** : les zones de bruit (notation musicale, lettrines, interlignaire) parasitent l'entraînement et représentent ~4.4% des lignes du corpus.
+Le Volet 1 du projet a entraîné un modèle **Kraken** (fine-tuning de `cremma-generic`) sur 4 corpus issus de HTR United (33 manuscrits, ancien français + latin, XIIIe siècle), atteignant un **CER de 26.3%** en validation. Ce modèle a ensuite été utilisé pour transcrire **16 manuscrits supplémentaires** depuis Gallica/BnF (129 documents, 16 336 lignes), produisant pour chaque page un JSON structuré — le **data contract HTR** — contenant le texte transcrit, les scores de confiance par caractère, et des candidats alternatifs pour les positions ambiguës.
 
-Ce projet explore un pipeline complet : prétraitement adaptatif des images → compilation de données Arrow filtrées → fine-tuning GPU cloud → publication des modèles.
+Le Volet 2 (ce document) prend cette sortie HTR brute et la transforme en texte exploitable :
 
-### Métriques cibles
+```
+Sortie HTR (JSON brut)
+        ↓
+1. Validation du data contract (jsonschema)
+        ↓
+2. EDA (confiance, longueur, taux needs_review, abréviations)
+        ↓
+3. Triage / review queue (direct / review / exclude)
+        ↓
+4. Normalisation par règles (Unicode, u/v, i/j, tilde, abréviations)
+        ↓
+5. Correction guidée par confiance (CamemBERT MLM sur les positions ambiguës)
+        ↓
+6. Détection lexicale (dictionnaire ancien français, 55k entrées)
+        ↓
+7. Évaluation relative (CER pairwise) + split stratifié scellé
+```
 
-| Niveau | CER | val_accuracy |
-|--------|:---:|:------------:|
-| Baseline (cremma-generic sans fine-tuning) | *à mesurer* | *à mesurer* |
-| Meilleure run actuelle (Run 4) | 26.3% | 73.7% |
-| Objectif validation | < 15% | > 85% |
-| Objectif excellence | < 8% | > 92% |
+Comme pour le HTR, **aucune vérité terrain complète** n'existe pour les 16 manuscrits du Volet 2 : l'évaluation est donc **relative** (comparaison entre variantes du même texte) plutôt qu'absolue, sauf sur l'échantillon de 200 lignes annoté manuellement utilisé pour le tableau d'ablation.
 
 ---
 
-## 2. Corpus et données
-
-### Description du corpus
-
-| Indicateur | Valeur |
-|---|---|
-| Documents ALTO (train) | 213 fichiers |
-| Documents ALTO (dev) | 32 fichiers |
-| Documents ALTO (test) | 3 fichiers |
-| Lignes totales (train, toutes zones) | ~19 800 |
-| Lignes texte courant (train, filtré) | 18 769 |
-| Période couverte | XIIIe–XVe siècle |
-| Langues | Ancien français (`fro`), Latin (`lat`) |
-| Format | ALTO XML v4 + JPEG |
-| Licence | CC-BY 4.0 |
-
-### Répartition des zones ALTO
-
-```
-Total lignes corpus : ~48 278
-  MainZone (texte principal)   : 45 438  (94.1%)
-  MarginTextZone (marginalia)  :    732  ( 1.5%)
-  Zones bruit (Music/DropCap/Interlinear) : 2 108  ( 4.4%)
-```
-
-### Sources
-
-| Corpus | Langue | Dépôt |
-|--------|--------|-------|
-| CREMMA-Medieval | Ancien français | [HTR-United/cremma-medieval](https://github.com/HTR-United/cremma-medieval) |
-| CREMMA-Medieval-LAT | Latin | [HTR-United/CREMMA-Medieval-LAT](https://github.com/HTR-United/CREMMA-Medieval-LAT) |
-| HTRomance Medieval FR | Ancien français | [HTRomance-Project/medieval-french](https://github.com/HTRomance-Project/medieval-french) |
-| HTRomance Medieval LAT | Latin | [HTRomance-Project/medieval-latin](https://github.com/HTRomance-Project/medieval-latin) |
-
-### Splits
-
-| Split | Fichiers | Lignes (filtré) | SHA-256 Arrow |
-|-------|:--------:|:---------------:|---------------|
-| Train | 213 | 18 769 | `1bec767c9a87caa3...` |
-| Dev | 32 | 3 702 | `20ef530c68228695...` |
-| Test | 3 | *scellé* | *à compléter* |
-
----
-
-## 3. Méthodologie
-
-### Vue d'ensemble
-
-```
-Corpus CREMMA Medieval (ALTO XML + JPEG)
-    │
-    ├─ pre_traitement.py ──── Deskew + CLAHE + filtres → mode L (grayscale)
-    │
-    ├─ ketos compile ─────── Arrow binaire (train.arrow / dev.arrow)
-    │
-    ├─ compile_arrow.py ──── Filtrage zones bruit → train_clean.arrow
-    │
-    └─ ketos train ───────── Fine-tuning depuis cremma-generic-1.0.1
-                              GPU cloud (Kaggle T4 / Colab A100)
-```
-
-### Prétraitement des images (`pre_traitement.py`)
-
-Pipeline de 4 étapes avec diagnostic automatique avant chaque correction :
-
-| Étape | Méthode | Paramètres | Seuil déclenchement |
-|-------|---------|-----------|-------------------|
-| Deskew | FFT / projection / Hough | auto par style paléographique | 0.3°–10° |
-| CLAHE | Histogram equalization local | clipLimit=2.0, tileGrid=8×8 | σ_fond < 0.4 |
-| Filtre médian | Convolution médiane | ksize=3 | pixels extrêmes > 0.1% |
-| Filtre gaussien | Flou gaussien | sigma=0.8–1.2 | σ_fond > 5 |
-
-Sortie : images **mode L (grayscale 8-bit)** — compatible avec `cremma-generic` entraîné en mode L.
-
-> Précaution manuscrits médiévaux : `ksize=3` obligatoire pour préserver les déliés gothiques (1–3 px). Ne jamais appliquer le filtre gaussien après binarisation.
-
-### Filtrage des zones bruit (`compile_arrow.py`)
-
-Zones **exclues** du Arrow d'entraînement :
-- `MusicZone` — notation musicale
-- `DropCapitalZone` — lettrines décoratives
-- `InterlinearLine` — annotations interlignaires
-
-Zones **incluses** :
-- `MainZone` — texte courant (94.1%)
-- `MarginTextZone` — marginalia (1.5%)
-
-### Fine-tuning Kraken
-
-```bash
-ketos train \
-  -f binary \
-  -i cremma-generic-1.0.1.mlmodel \
-  --resize union \
-  --augment \
-  --lag 10 \
-  --precision 16-mixed \
-  -b 8 \
-  --workers 4 \
-  -t train_clean.arrow -e dev_clean.arrow
-```
-
-| Paramètre | Valeur | Justification |
-|-----------|--------|---------------|
-| `--resize union` | union des alphabets | Ajoute les 22 caractères absents du modèle de base |
-| `--augment` | activé | Augmentation données (rotation, bruit, déformation) |
-| `--lag 10` | 10 stages | Early stopping — arrêt si pas d'amélioration sur 10 stages |
-| `--precision 16-mixed` | fp16 | Requis T4 (pas de bf16 sur Turing) |
-
----
-
-## 4. Résultats des expériences
-
-### Tableau de bord
-
-| Run | Date | Plateforme | Données | Modèle base | CER | Stages | Statut |
-|-----|------|-----------|---------|-------------|:---:|:------:|--------|
-| 1 | 11 juin | Local Windows | binarisé mode 1 | cremma-medieval_best | ~30% | — | Bloqué (workers Windows) |
-| 2 | 12 juin | Kaggle T4 x2 | binarisé mode 1 | cremma_generic | ~27% | — | Logs partiels |
-| 3 | 13 juin | Colab A100 | binarisé mode 1 | cremma-generic-1.0.1 | 28.1% | 24 | Stagnation stage 12 |
-| **4** | **13 juin** | **Kaggle T4 x2** | **binarisé mode 1** | **cremma_generic** | **26.3%** | **37** | **Meilleur run** |
-| 5 | 14 juin | Kaggle T4 x2 | binarisé mode 1 | cremma-generic-1.0.1 | 26.3% | 37 | Identique Run 4 |
-| 6 | 14 juin | Colab T4 | binarisé mode 1 | cremma_generic | ~26.5% | 14 | Aborté — mismatch confirmé |
-
-### Courbe d'apprentissage — Run 4 (meilleure run)
-
-| Stage | val_accuracy | CER | Patience |
-|-------|:-----------:|:---:|:--------:|
-| 0 | 72.1% | 27.9% | 0/10 |
-| 5 | 72.8% | 27.2% | 0/10 |
-| 10 | 73.2% | 26.8% | 0/10 |
-| 15 | 73.4% | 26.6% | 0/10 |
-| 20 | 73.5% | 26.5% | 0/10 |
-| 27 | **73.67%** | **26.3%** | 0/10 |
-| 37 | 73.67% | 26.3% | 10/10 → stop |
-
-### Diagnostic : le plafond à ~74%
-
-Toutes les runs 1–6 utilisent des données **binarisées (mode 1)** alors que `cremma-generic` a été entraîné sur des images **grayscale (mode L)**. Ce mismatch crée un plafond artificiel.
-
-Preuves convergentes :
-- `WARNING training set contains mode 1 data` présent dès la Run 2
-- Changer de modèle de base (Run 5 vs Run 4) : même CER 26.3%, même stage optimal 27
-- `train.arrow` S3 s'avère binarisé malgré vérification initiale
-
-### Expériences planifiées
-
-| # | Hypothèse | Données | Impact estimé | Statut |
-|---|-----------|---------|:-------------:|--------|
-| Exp 3 | Arrow grayscale filtré (`train_clean.arrow`) | mode L vérifié localement | **+10–15 pts CER** | Données prêtes |
-| Exp 4 | TrOCR fine-tuning (LoRA r=8) vs Kraken | même corpus | comparaison | Planifiée |
-
-### Modèles publiés (HuggingFace)
-
-[legb/htr-cremma-medieval](https://huggingface.co/legb/htr-cremma-medieval) — licence CC-BY 4.0
-
-| Fichier | Expérience | CER | Commit |
-|---------|-----------|:---:|--------|
-| `exp2_binarise_20260613.safetensors` | Baseline binarisée (Run 4/5) | 26.3% | `99843b75` |
-| `exp3_clean_arrow_20260613.safetensors` | Arrow filtré grayscale | en cours | `5e43b1b1` |
-
----
-
-## 5. Évaluation détaillée
-
-> Les métriques ci-dessous seront complétées après Exp 3 et le déscellement du set de test.
-
-### CER par siècle (à compléter)
-
-| Siècle | Documents | CER Run 4 | CER Exp 3 |
-|--------|:---------:|:---------:|:---------:|
-| XIIIe | *n* | *TODO* | *TODO* |
-| XIVe | *n* | *TODO* | *TODO* |
-| XVe | *n* | *TODO* | *TODO* |
-
-### CER par langue (à compléter)
-
-| Langue | Documents | CER Run 4 | CER Exp 3 |
-|--------|:---------:|:---------:|:---------:|
-| Ancien français (`fro`) | *n* | *TODO* | *TODO* |
-| Latin (`lat`) | *n* | *TODO* | *TODO* |
-
-### Comparaison baseline (à compléter)
-
-| Modèle | CER (val) | Delta vs baseline |
-|--------|:---------:|:-----------------:|
-| `cremma-generic-1.0.1` sans fine-tuning | *TODO* | — |
-| Run 4 (fine-tuning binarisé) | 26.3% | *TODO* |
-| Exp 3 (fine-tuning grayscale filtré) | *TODO* | *TODO* |
-
-### Analyse des erreurs (à compléter)
-
-Classes d'erreurs prioritaires à analyser :
-- Abréviations gothiques (titres, nasales, etc.)
-- Lettres ambiguës (u/n, i/m, c/e en gothique textualis)
-- Caractères rares (absents du modèle de base — 22 caractères identifiés)
-- Ligatures médiévales
-
----
-
-## 6. Discussion et limitations
-
-### Ce qui a fonctionné
-
-- **Pipeline de prétraitement adaptatif** : diagnostic automatique par image, évite les corrections inutiles sur les scans propres
-- **Compilation Arrow filtrée** : exclusion des zones bruit via `compile_arrow.py`, reproductible et vérifiable par SHA-256
-- **Infrastructure cloud** : notebooks Kaggle/Colab avec credentials sécurisés, modèles sauvegardés sur S3 + HuggingFace
-
-### Limitations identifiées
-
-1. **Mismatch mode L/1** — toutes les runs 1–6 sur données binarisées → plafond ~74% artificiel. Exp 3 est le premier vrai test grayscale.
-2. **`train.arrow` S3 non-grayscale** — malgré la vérification initiale, le warning Kraken confirme que l'Arrow S3 est binarisé. Seul `train_clean.arrow` compilé localement le 14 juin est vérifié mode L.
-3. **Corpus limité** — 213 documents train, ~18 769 lignes après filtrage. Sous-représentation de certains scribes et du XVe siècle.
-4. **22 caractères absents** — présents dans le train set mais absents de l'alphabet du modèle de base. Gérés par `--resize union` mais non comptabilisés dans l'accuracy officielle.
-5. **Biais linguistique** — majoritairement ancien français parisien, couverture latine sous-représentée.
-6. **Reproductibilité GPU** — résultats légèrement différents entre T4 x1 et T4 x2 (DataParallel), entre Colab et Kaggle.
-
-### Prochaines étapes
-
-- Exp 3 : valider l'hypothèse grayscale avec `train_clean.arrow`
-- Évaluation sur le set de test scellé (3 documents)
-- Analyse qualitative des erreurs différentielles Exp 3 vs Run 4
-- Exp 4 (bonus) : comparaison TrOCR LoRA vs Kraken, test de McNemar
-
----
-
-## 7. Reproductibilité
-
-### Versions exactes utilisées
-
-| Outil | Version |
-|-------|---------|
-| Python | 3.11 |
-| Kraken | 7.0.2 |
-| PyTorch | 2.10.0 |
-| PyTorch Lightning | 2.6.1 |
-| CUDA | 12.x (T4) / 12.x (A100) |
-| huggingface_hub | 1.19.0 |
-
-### Graine aléatoire
-
-Kraken ne supporte pas de seed fixe globale — les résultats peuvent varier de ±0.2% CER entre runs identiques sur le même hardware.
-
-### Checksums des données
-
-| Fichier | SHA-256 |
-|---------|---------|
-| `train_clean.arrow` | `1bec767c9a87caa322b20dc054da85e161ab3e630c498eb1a35ae51d19348026` |
-| `dev_clean.arrow` | `20ef530c68228695bb1b68f07a07b6eb2e2ffde0f62fd8e9c2e6b29d6720448e` |
-| `cremma-generic-1.0.1.mlmodel` | *TODO — à récupérer depuis Zenodo 7631619* |
-
----
-
-## 8. Pipeline — utilisation
-
-### Étape 1 — Prétraitement
-
-```bash
-python src/pre_traitement.py data/repos/ --output data/preprocessed_grayscale/
-```
-
-### Étape 2 — Compilation Arrow filtrée
-
-```bash
-python src/compile_arrow.py \
-  --splits data/splits/train.txt data/splits/dev.txt \
-  --output data/splits/arrow_clean/
-```
-
-### Étape 3 — Entraînement (Kaggle / Colab)
-
-| Notebook | Plateforme | Expérience |
-|----------|-----------|-----------|
-| `notebooks/kaggle_exp3_clean_arrow.ipynb` | Kaggle T4 x2 | Exp 3 — Arrow filtré grayscale |
-| `notebooks/colab_exp3_clean_arrow.ipynb` | Colab A100 / T4 | Exp 3 — Arrow filtré grayscale |
-| `notebooks/colab_exp2_grayscale.ipynb` | Colab T4 | Exp 2 — aborté (référence) |
-
-Les notebooks récupèrent les credentials AWS depuis **Kaggle Secrets** / **Colab Secrets** — jamais hardcodés.
-
-### Lancer les tests
-
-```bash
-pytest tests/
-```
-
-### Vérifier le mode d'un Arrow
-
-```python
-import pyarrow as pa
-reader = pa.ipc.open_file("data/splits/arrow_clean/train_clean.arrow")
-batch = reader.get_batch(0)
-# im doit être mode L (grayscale), pas mode 1 (binarisé)
-```
-
-### Uploader un modèle sur HuggingFace
-
-```bash
-hf auth login
-hf upload legb/htr-cremma-medieval models/mon_modele.safetensors mon_modele.safetensors
-```
-
----
-
-## 9. Structure du projet
-
-```
-htr-cremma-medieval-2026/
-│
-├── src/
-│   ├── pre_traitement.py        ← Pipeline prétraitement images (deskew, CLAHE, filtres)
-│   ├── compile_arrow.py         ← Compilation Arrow filtré (sans zones bruit)
-│   ├── train.py                 ← Script entraînement local (référence)
-│   └── aws_sagemaker_launch.py  ← Orchestrateur SageMaker (optionnel)
-│
-├── notebooks/
-│   ├── kaggle_exp3_clean_arrow.ipynb   ← Exp 3 — Kaggle T4
-│   ├── colab_exp3_clean_arrow.ipynb    ← Exp 3 — Colab
-│   └── colab_exp2_grayscale.ipynb      ← Exp 2 — aborté (référence)
-│
-├── experiments/
-│   ├── EXPERIMENT_LOG.md        ← Journal des hypothèses et décisions
-│   └── journal.jsonl            ← Logs structurés machine-readable (une ligne par run)
-│
-├── tests/
-│   └── test_pretraitement.py    ← Tests non-régression pipeline image
-│
-├── data/
-│   ├── splits/                  ← Fichiers .txt (train/dev/test) + Arrow compilés
-│   └── repos/                   ← Clones des corpus HTR-United (gitignore)
-│
-├── models/                      ← Modèles téléchargés localement (gitignore)
-│
-├── README.md                    ← Ce fichier
-├── MODEL_CARD.md                ← Fiche modèle officielle
-├── TRAINING_RUNS.md             ← Historique détaillé des runs
-├── DATA_SOURCES.md              ← Sources corpus + SHA-256 + liens HuggingFace
-├── CONVENTIONS_TRANSCRIPTION.md ← Règles de transcription CREMMA
-└── requirements.txt
-```
-
----
-
-## 10. Installation
-
-```bash
-git clone https://github.com/loulou441/htr-cremma-medieval-2026.git
-cd htr-cremma-medieval-2026
-
-python -m venv cremma
-cremma\Scripts\activate      # Windows
-# source cremma/bin/activate  # Linux/macOS
-
-pip install -r requirements.txt
-```
-
----
-
-## 11. Infrastructure cloud
-
-### Amazon S3 (privé)
-
-```
-s3://htr-cremma-medieval/
-├── base-model/
-│   ├── cremma_generic.mlmodel           (21.8 MB — Zenodo 7234166)
-│   └── cremma-generic-1.0.1.mlmodel    (21.7 MB — Zenodo 7631619)
-├── splits/
-│   ├── train.arrow                      (939 MB — binarisé mode 1)
-│   ├── dev.arrow                        (144 MB — binarisé mode 1)
-│   ├── train_clean.arrow                (914 MB — grayscale mode L filtré)
-│   └── dev_clean.arrow                  (144 MB — grayscale mode L filtré)
-└── output/
-    └── (modèles fine-tunés)
-```
-
-### Plateformes GPU
-
-| Plateforme | GPU | Batch | Precision | Durée/run |
-|-----------|-----|:-----:|:---------:|:---------:|
-| Kaggle T4 x2 | 2× T4 16 GB | 8 | 16-mixed | ~2h30 |
-| Colab A100 | A100 40 GB | 16 | bf16-mixed | ~5h30 |
-| Colab T4 | T4 16 GB | 8 | 16-mixed | ~3h |
-
----
-
-## 12. NLP Jour 1 - Data Contract & Normalisation
-
-Pipeline NLP:
-
-- `python src/nlp_cli.py validate --input data/contracts/htr_contract.json`
-- `python src/nlp_cli.py validate --input nlp/output`
-- `python src/nlp_cli.py eda --input data/contracts/htr_contract.json --output reports/eda_day1.json`
-- `python src/nlp_cli.py eda --input nlp/output --output reports/eda_nlp_output.json`
-- `python src/nlp_cli.py review-queue --input data/contracts/htr_contract.json`
-- `python src/nlp_cli.py review-queue --input nlp/output`
-- `python src/nlp_cli.py correct --input data/contracts/htr_contract.json --output data/contracts/htr_contract.corrected.json --log-output data/review/correction_log.jsonl --cer-output data/review/correction_cer_report.json` (CamemBERT MLM actif par défaut ; `--no-mlm` pour le scorer heuristique de repli ; réinjection `needs_review` automatique, désactivable via `--no-review-update`)
-- `python src/nlp_cli.py correct --input nlp/output --output-dir nlp/output_corrected --log-output data/review/correction_log.jsonl`
-- `python src/nlp_cli.py normalize-contract --input data/contracts/htr_contract.json --output data/contracts/contract_normalized.json --cer-output data/review/normalize_cer_report.json` (calcule aussi le CER pairwise raw/normalisé)
-- `python src/nlp_cli.py normalize-contract --input nlp/output --output-dir nlp/output_normalized`
-- `python src/nlp_cli.py normalize --text "Et li cuens prist la d~e"`
-- `python src/nlp_cli.py ablation --csv-input data/reference_200.csv`
-- `python src/nlp_cli.py split --records data/documents_metadata.json --output-dir data/splits_nlp`
-
-Le CER pairwise (texte avant/après, faute de vérité terrain complète) est désormais calculé à chaque étape qui modifie le texte (`normalize-contract`, `correct`), en plus de la commande dédiée `relative-eval`.
-
-Fichiers ajoutes:
-
-- `config/htr_data_contract_schema.json` (schema JSON)
-- `data/abbreviations/medieval_abbreviations.json` (table abreviations)
-- `src/htr_data_contract.py` (validation, EDA, triage, split scelle)
-- `src/normalization_rules.py` (normaliseur a regles avec toggles)
-- `src/confidence_correction.py` (correction contextuelle guidee par confiance, scorer CamemBERT MLM actif par defaut, reinjection `needs_review`, CER pairwise par ligne)
-- `src/cer_utils.py` (CER)
-- `src/nlp_day1_cli.py` (CLI unifie)
-
----
-
-## 13. Références
-
-### Corpus et données
-
-- **CREMMA-Medieval** — HTR-United / ENC-PSL. <https://github.com/HTR-United/cremma-medieval>
-- **CREMMA-Medieval-LAT** — HTR-United. <https://github.com/HTR-United/CREMMA-Medieval-LAT>
-- **HTRomance Medieval French** — <https://github.com/HTRomance-Project/medieval-french>
-- **HTRomance Medieval Latin** — <https://github.com/HTRomance-Project/medieval-latin>
-
-### Modèles de base
-
-- **cremma_generic** — Pinche, A. (2022). Zenodo. DOI: [10.5281/zenodo.7234166](https://doi.org/10.5281/zenodo.7234166)
-- **cremma-generic-1.0.1** — Zenodo. DOI: [10.5281/zenodo.7631619](https://doi.org/10.5281/zenodo.7631619)
-
-### Framework HTR
-
-- **Kraken** — Kiessling, B. (2019). *Kraken — an Universal Text Recognizer for the Humanities*. DH2019. <https://github.com/mittagessen/kraken>
-- **SegmOnto** — <https://segmonto.github.io>
-
-### Conventions de transcription
-
-- **Pinche, A.** (2022). *Guide de transcription pour les manuscrits du Xe au XVe siècle*. HAL.
-
-### Prétraitement
-
-- **Sauvola & Pietikäinen** (2000). *Adaptive Document Image Binarization*. Pattern Recognition, 33(2), 225–236.
-- **Zuiderveld, K.** (1994). *Contrast Limited Adaptive Histogram Equalization*. Graphics Gems IV.
-
-### Citation
-
-```bibtex
-@misc{htr-cremma-medieval-2026,
-  title  = {HTR Manuscrits XIIIe siècle — Fine-tuning Kraken sur manuscrits médiévaux},
-  author = {Ouazar, Djamal and Tessier, Manon and El Mortada, Hamza},
-  year   = {2026},
-  url    = {https://https://github.com/Loulou441/htr-manuscrits-XIIIe-siecle}
+## 2. Le data contract HTR
+
+Chaque page transcrite par le modèle HTR est un JSON validé par un schéma strict (`htr_data_contract_schema.json`) :
+
+```json
+{
+  "document_id": "gallica_bnf_fr_12483_f003",
+  "metadata": {
+    "source": "Gallica",
+    "century_estimate": "XIII",
+    "document_type": "roman",
+    "sha256": "a3f2b1..."
+  },
+  "pages": [{
+    "page_id": "f003r",
+    "image_path": "f003r.tif",
+    "lines": [{
+      "line_id": "f003r_l001",
+      "text": "Et li cuens Artus prist la d~e par la main",
+      "confidence": 0.87,
+      "char_confidences": [0.99, 0.99, 0.88, 0.72, 0.43, ...],
+      "candidates": {"position": 4, "options": ["a", "e", "o"]},
+      "needs_review": false,
+      "polygon": [[120, 45], [892, 45], [892, 68], [120, 68]],
+      "reading_order": 1
+    }]
+  }]
 }
 ```
+
+### Champs critiques pour le NLP
+
+| Champ | Rôle |
+|---|---|
+| `text` | Transcription semi-diplomatique (abréviations non résolues conservées). |
+| `confidence` | Score global de la ligne (0–1). `< 0.7` → candidat à la révision. |
+| `char_confidences` | Liste par caractère, de même longueur que `text`. |
+| `candidates` | Pour les positions ambiguës, propositions alternatives (objet ou liste d'objets `{position, options}`). |
+| `needs_review` | Booléen ; recalculé après correction (voir [section 7](#7-correction-guidée-par-confiance-camembert-mlm)). |
+| `polygon` | Ancrage spatial (utile pour relier entités nommées et image en aval). |
+
+**129/129 documents valides** contre le schéma sur le corpus complet.
+
+---
+
+## 3. Architecture du pipeline NLP
+
+```
+nlp_pipeline/
+├── htr_data_contract.py       # validation, EDA, triage, split stratifié + scellement
+├── normalization_rules.py     # normaliseur par règles + détection lexicale/abréviations
+├── confidence_correction.py   # correction guidée par confiance (CamemBERT MLM)
+├── cer_utils.py                # CER + CER pairwise moyen
+├── nlp_cli.py                  # CLI unifié exposant toutes les commandes
+└── lexique/
+    └── dictionary.py           # construction du dictionnaire ancien français
+```
+
+Toutes les commandes sont exposées via un seul point d'entrée :
+
+```bash
+python nlp_pipeline/nlp_cli.py <commande> [options]
+```
+
+Les commandes disponibles : `validate`, `eda`, `review-queue`, `normalize`, `normalize-contract`, `correct`, `ablation`, `relative-eval`, `detect-normalization`, `lexical-check`, `split`.
+
+---
+
+## 4. Validation et EDA
+
+### Validation du schéma
+
+```bash
+python nlp_pipeline/nlp_cli.py validate --input data/nlp_output
+```
+
+Vérifie la conformité au schéma JSON **et** des règles logiques additionnelles : `len(char_confidences) == len(text)`, présence et validité du `polygon`.
+
+### Analyse exploratoire (EDA)
+
+```bash
+python nlp_pipeline/nlp_cli.py eda --input data/nlp_output --output reports/eda_report.json
+```
+
+Métriques calculées :
+- confiance moyenne et quartiles,
+- médiane de longueur de ligne,
+- taux de lignes `needs_review`,
+- taux de lignes courtes (< 10 caractères),
+- abréviations résiduelles par ligne (`~`, `⁊`, `ꝑ`, `ꝗ`, `ꝓ`, `ꝙ`).
+
+**Repères typiques sur un corpus CREMMA moyen-français** : taux `needs_review` 15–30%, confiance moyenne 0.78–0.88, longueur médiane 45–65 caractères. Au-delà de 40% de `needs_review`, le corpus est jugé difficile (scan de mauvaise qualité ou modèle HTR sous-performant).
+
+---
+
+## 5. Stratégie de triage / review queue
+
+Logique à trois niveaux, ajustable par seuils :
+
+| Niveau | Confiance | Action |
+|---|---|---|
+| Validation automatique | `> 0.90` | Ingestion directe. |
+| File de révision | `0.60–0.90` ou `needs_review = true` | Export CSV pour correction humaine, trié par confiance croissante. |
+| Exclusion | `< 0.60` | Retranscription manuelle ou vérification de l'image source. |
+
+Une ligne est **forcée en révision** même si sa confiance moyenne est bonne (`≥ 0.90`) si l'écart-type de ses `char_confidences` dépasse `0.2` — une moyenne flatteuse peut masquer un caractère critique très incertain (ex. *Louis* vs *Louise*).
+
+```bash
+python nlp_pipeline/nlp_cli.py review-queue \
+  --input data/nlp_output \
+  --csv-output data/review/review_queue.csv \
+  --json-output data/review/review_buckets.json \
+  --direct-threshold 0.9 --exclude-threshold 0.6 --char-std-threshold 0.2
+```
+
+---
+
+## 6. Normalisation par règles
+
+Avant toute correction statistique/IA, six règles déterministes sont appliquées, dans cet ordre, via une classe indépendante et toggleable (`MedievalFrenchNormalizer`) :
+
+1. **NFC Unicode** — formes combinées → précomposées.
+2. **lowercase** — les majuscules médiévales sont rares et inconsistantes.
+3. **u/v** — résolution contextuelle (`auant→avant`, `cheualier→chevalier`).
+   *Exception* : les digrammes `qu`/`gu` et `u+i` (`lui`) gardent leur `u` vocalique — compromis qui empêche `deuient→devient`, accepté car les faux positifs corrigés sont bien plus fréquents que ce faux négatif.
+4. **i/j** — `i` consonantique devant voyelle (sauf digramme `ie`/`ien`/`ier`).
+5. **tilde nasal** — `a~/e~/o~` → `an/en/on`.
+6. **table d'abréviations** — 14 marqueurs scribaux et latinismes (`⁊→et`, `ꝑ→per`, `dñs→dominus`, etc.), appliqués du plus long au plus court pour éviter les collisions.
+
+```bash
+# Sur du texte brut
+python nlp_pipeline/nlp_cli.py normalize --text "Et li cuens prist la d~e"
+
+# Sur un data contract complet (ajoute normalized_text à chaque ligne)
+python nlp_pipeline/nlp_cli.py normalize-contract \
+  --input data/nlp_output \
+  --output-dir data/nlp_output_normalized \
+  --cer-output data/review/normalize_cer_report.json
+```
+
+### Impact mesuré sur le corpus complet
+
+| Avant | Après | Occurrences |
+|---|---|---|
+| `qve` | `que` | 651 |
+| `qvi` | `qui` | 420 |
+| `bjen` | `bien` | 182 |
+| `lvi` | `lui` | 182 |
+| `qvil` | `quil` | 146 |
+| `pvis` | `puis` | 112 |
+
+→ **3725 paires de mots distinctes** corrigées par les règles sur le corpus complet.
+
+---
+
+## 7. Correction guidée par confiance (CamemBERT MLM)
+
+### Principe (4 étapes)
+
+1. **Identification** : parcourir les `char_confidences`, repérer les positions sous le seuil (défaut `0.7`) qui possèdent une entrée `candidates`.
+2. **Arbitrage par modèle de langue** : pour chaque position ambiguë, générer une variante du texte par option candidate, masquer la position et faire scorer chaque variante par un modèle de langue masqué.
+3. **Application** : retenir l'option au score le plus élevé, modifier le texte, journaliser la correction (`old_char`, `new_char`, `old_confidence`, position) dans un fichier `.jsonl`.
+4. **Réinjection** : mettre à jour `needs_review` dans le contrat corrigé, et mesurer le CER pairwise introduit par la correction.
+
+### Scorer : CamemBERT MLM activé par défaut
+
+`ConfidenceGuidedCorrector` utilise par défaut `almanach/camembert-base` en mode *Masked Language Model* (`MaskedLMVariantScorer`) : chaque variante est évaluée en masquant la position ambiguë et en comparant la log-probabilité de chaque caractère candidat sous le modèle. Un scorer heuristique léger (`HeuristicVariantScorer`, basé sur la continuité alphabétique/vocalique) reste disponible en repli explicite via `--no-mlm`, pour les environnements sans GPU ou sans `transformers` installé.
+
+```bash
+# CamemBERT MLM (par défaut)
+python nlp_pipeline/nlp_cli.py correct \
+  --input data/nlp_output \
+  --output-dir data/nlp_output_corrected \
+  --log-output data/review/correction_log.jsonl \
+  --cer-output data/review/correction_cer_report.json
+
+# Scorer heuristique de repli
+python nlp_pipeline/nlp_cli.py correct --input data/nlp_output --output-dir data/nlp_output_corrected --no-mlm
+```
+
+### Réinjection de `needs_review`
+
+Après correction, `needs_review` est recalculé ligne par ligne (désactivable via `--no-review-update`) selon une logique prudente :
+
+- une ligne ne repasse à `false` que si **toutes** les positions ambiguës connues (`candidates`) ont été traitées par le correcteur **et** que sa confiance globale (`≥ 0.9`) et l'écart-type de ses `char_confidences` (`≤ 0.2`) restent dans les seuils acceptables ;
+- une ligne sans aucune entrée `candidates` garde son statut inchangé : le correcteur n'a aucune prise sur elle ;
+- une ligne ne passe **jamais** de `false` à `true` (la réinjection ne peut qu'améliorer le statut, jamais le dégrader).
+
+### Pourquoi 0 correction est attendu sur ce run
+
+Sur les 16 manuscrits du corpus actuel, `candidates` est **`null` sur la quasi-totalité des lignes** : le HTR ne produit pas de variantes alternatives. Même avec CamemBERT actif, le correcteur n'a donc rien à arbitrer aujourd'hui — ce n'est pas un bug, c'est documenté en [section 15](#15-limites-connues). Le mécanisme est néanmoins pleinement opérationnel et prêt à s'activer dès qu'une source de `candidates` existera (HTR multi-hypothèses, ou heuristique de substitution par fréquence, voir [section 16](#16-prochaines-étapes)).
+
+---
+
+## 8. Détection lexicale
+
+Deux niveaux de détection, complémentaires :
+
+- **`detect-normalization`** : repère les marqueurs typographiques d'abréviation résiduels (`~`, `⁊`, `ꝑ`...) et propose des expansions automatiques pour les tokens non encore couverts par la table d'abréviations.
+- **`lexical-check`** : vérifie si chaque token (normalisé) existe dans `dictionnaire_ancien_francais.json` (lexique Wiktionary ancien français + CLTK, **54 921 entrées**, construit par `lexique/dictionary.py`). Les tokens absents sont des candidats à une vraie erreur lexicale — mot mal transcrit, abréviation non résolue, ou terme hors corpus.
+
+```bash
+python nlp_pipeline/nlp_cli.py detect-normalization --output-dir data/nlp_output --top-n 50
+python nlp_pipeline/nlp_cli.py lexical-check --dictionary data/dictionary/dictionnaire_ancien_francais.json --output-dir data/nlp_output --top-n 30
+```
+
+Sur le corpus complet, seuls **4.4% des tokens** sont couverts par le dictionnaire — un taux bas qui reflète une limite de la ressource (les mots-outils très fréquents comme `est`, `ce`, `vous` n'y sont pas indexés), pas un échec de la normalisation : les marqueurs typographiques bruts disparaissent bien du classement après normalisation.
+
+---
+
+## 9. Évaluation : CER pairwise à chaque étape
+
+Faute de vérité terrain complète sur les 16 manuscrits du Volet 2, l'évaluation est **relative** : on mesure le CER entre variantes du même texte plutôt qu'un CER absolu.
+
+Le CER pairwise est désormais calculé à **chaque étape qui modifie le texte**, pas seulement via la commande dédiée :
+
+| Étape | Calcul | Où |
+|---|---|---|
+| `normalize-contract` | CER(`raw`, `normalized_text`) par ligne + moyenne | `--cer-output` |
+| `correct` | CER(`raw`, `corrected`) par ligne + moyenne | `--cer-output` |
+| `relative-eval` | CER pairwise moyen entre N variantes au choix (`raw`, `text_normalized`, `corrected`...) sur un CSV | sortie console |
+
+```bash
+python nlp_pipeline/nlp_cli.py relative-eval \
+  --csv-input data/review/relative_eval_sample.csv \
+  --variant-cols raw,text_normalized,corrected
+```
+
+**Important** : `ablation` (CER avant/après) ne doit être utilisé qu'avec une vraie colonne de référence (transcription validée manuellement, ex. ALTO/PageXML). Sans cela, le `CER before` est trivialement nul (comparaison du texte brut à lui-même) et le `CER after` ne mesure que l'ampleur des changements introduits — pas un gain de qualité réel.
+
+```bash
+python nlp_pipeline/nlp_cli.py ablation \
+  --csv-input data/reference_200.csv \
+  --reference-col reference --hypothesis-col text --limit 200
+```
+
+---
+
+## 10. Split stratifié et test set scellé
+
+Le split `train/val/test` est **stratifié** sur deux dimensions simultanément — siècle (`century_estimate`) et type de document (`document_type`) — pour qu'aucune partition ne soit biaisée vers une seule période ou un seul genre de texte.
+
+**Règle absolue** : une fois constitué, le test set est **scellé** (hash SHA-256 calculé et consigné immédiatement) et ne doit plus être consulté jusqu'au rendu final. Toutes les décisions d'architecture et d'hyperparamètres se prennent en observant uniquement la performance sur le jeu de validation.
+
+```bash
+python nlp_pipeline/nlp_cli.py split \
+  --records data/documents_metadata.json \
+  --output-dir data/splits_nlp \
+  --train-ratio 0.8 --val-ratio 0.1 --seed 67
+```
+
+Produit `train.json`, `val.json`, `test_sealed.json` et `test_set.sha256`.
+
+---
+
+## 11. Référence des commandes CLI
+
+| Commande | Rôle |
+|---|---|
+| `validate` | Valide un ou plusieurs data contracts contre le schéma JSON + règles logiques. |
+| `eda` | Calcule les métriques exploratoires (confiance, longueur, abréviations, `needs_review`). |
+| `review-queue` | Construit les buckets `direct/review/exclude` et exporte la file de révision en CSV. |
+| `normalize` | Normalise du texte brut ou un CSV via les règles déterministes. |
+| `normalize-contract` | Normalise un data contract complet (ajoute `normalized_text`), calcule le CER pairwise. |
+| `correct` | Correction guidée par confiance (CamemBERT MLM par défaut), réinjecte `needs_review`, calcule le CER pairwise. |
+| `ablation` | CER avant/après normalisation sur un échantillon de référence **annoté manuellement**. |
+| `relative-eval` | CER pairwise moyen entre plusieurs variantes d'un même texte (CSV). |
+| `detect-normalization` | Repère les tokens suspects (marqueurs d'abréviation) et propose des expansions. |
+| `lexical-check` | Flague les tokens absents du dictionnaire ancien français. |
+| `split` | Split stratifié + scellement du test set (SHA-256). |
+
+Options communes à `normalize-contract` et `correct` : `--input` (fichier ou dossier de data contracts), `--output` / `--output-dir`, `--cer-output` (rapport JSON du CER pairwise).
+
+Options spécifiques à `correct` : `--threshold` (seuil de confiance, défaut `0.7`), `--mlm-model` (défaut `almanach/camembert-base`), `--mlm-device` (défaut `auto`), `--no-mlm` (scorer heuristique de repli), `--no-review-update` (désactive la réinjection de `needs_review`), `--log-output` (journal `.jsonl` des corrections).
+
+---
+
+## 12. Structure des fichiers
+
+```
+config/
+└── htr_data_contract_schema.json     # schéma JSON du data contract
+data/
+├── abbreviations/medieval_abbreviations.json
+├── dictionary/dictionnaire_ancien_francais.json
+├── nlp_output/                        # data contracts bruts (sortie HTR)
+├── nlp_output_normalized/             # après normalize-contract
+├── nlp_output_corrected/              # après correct
+├── review/                            # CSV, JSON, logs, rapports CER
+└── splits_nlp/                        # train/val/test + scellement
+nlp_pipeline/
+├── htr_data_contract.py
+├── normalization_rules.py
+├── confidence_correction.py
+├── cer_utils.py
+├── nlp_cli.py
+└── lexique/dictionary.py
+tests/
+├── test_normalization_rules.py
+└── test_htr_data_contract.py
+```
+
+---
+
+## 13. Tests
+
+```bash
+pip install -r requirements.txt --break-system-packages
+pytest -q
+```
+
+Dépendances NLP ajoutées : `jsonschema>=4.21`, `pytest>=8.0`, `transformers>=4.0`, `sentencepiece>=0.1.0` (CamemBERT MLM).
+
+**Vérifier que le MLM est bien actif** (sans relancer tout le run) :
+
+```bash
+python nlp_pipeline/nlp_cli.py correct --input data/nlp_output --output /tmp/out.json
+# → doit afficher : "Scorer : CamemBERT MLM (almanach/camembert-base)"
+```
+
+Si `transformers`/`torch` ne sont pas installés, la commande échoue avec un message explicite renvoyant vers `--no-mlm`, plutôt qu'un traceback brut.
+
+---
+
+## 14. Résultats sur le corpus complet
+
+*Run du 18 juin 2026, 129 documents, 16 336 lignes :*
+
+| Mesure | Valeur |
+|---|---|
+| Documents validés | 129 / 129 (100%) |
+| Lignes analysées (EDA) | 16 336 |
+| Confiance HTR moyenne | 0.793 |
+| Lignes signalées pour révision | 36.8% |
+| Tests unitaires | 13 / 13 |
+| CER pairwise moyen (raw / normalisé / corrigé) | 0.0667 |
+| Tokens couverts par le dictionnaire ancien français | 4.4% |
+| Paires de mots corrigées par les règles | 3725 |
+
+---
+
+## 15. Limites connues
+
+- **Détection lexicale (4.4% de couverture)** : limite de la ressource externe (mots-outils absents), pas un échec de la normalisation.
+- **Correction guidée par confiance/MLM** : le scorer CamemBERT est actif par défaut, mais `candidates` est `null` sur la quasi-totalité des données réelles → 0 correction appliquée sur ce run. Le CER pairwise de l'étape `correct` est donc proche de 0 (texte inchangé), ce qui est attendu.
+- **Réinjection `needs_review`** : pour la même raison, son effet n'est pas encore observable sur le corpus actuel.
+- **Règle u/v** : exclut volontairement `u+i` pour éviter les faux positifs, empêchant `deuient→devient` — compromis documenté et accepté.
+- **`ablation` vs `relative-eval`** : ne pas confondre les deux. `ablation` nécessite une vraie référence manuelle ; `relative-eval` ne mesure qu'une stabilité relative entre variantes, sans préjuger d'un gain de qualité.
+
+---
+
+## 16. Prochaines étapes
+
+- Générer de vraies entrées `candidates` (HTR multi-hypothèses, ou heuristique de substitution par fréquence à partir du dictionnaire/lexique de référence) pour que le scorer CamemBERT, déjà actif, ait effectivement des variantes à arbitrer.
+- Enrichir le dictionnaire de référence avec les mots-outils pour rendre `lexical-check` plus discriminant.
+- **Plan « after »** (NER, POS, graphe, TEI) : 4 phases séquentielles non démarrées — baseline NER (`magistermilitum/roberta-multilingual-medieval-ner`), fine-tuning NER (CamemBERT-LoRA + seqeval), POS (Stanza `frm`) + extraction de relations par règles, graphe NetworkX + export TEI-XML. Évaluation à chaque phase via CER **relatif** uniquement, toujours faute de vérité terrain.
+
+---
+
+## Références
+
+- Pinche, A. — conventions graphématiques pour l'édition de manuscrits médiévaux (MUFI, SegmOnto, ChocoMufin).
+- HTR United / CREMMA Medieval / CATMuS Medieval — corpus et modèles de référence HTR.
+- `almanach/camembert-base` — modèle de langue français utilisé pour la correction guidée par confiance (Hugging Face).
